@@ -226,20 +226,41 @@ def convert_mut_histos_to_df():
 
 
 class GenerateMotifDataFrame:
-    def __init__(self):
-        pass
+    """
+    A class used to generate raw data from constructs and group it into motifs
+    """
 
-    def run(self, df):
+    def run(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Run the entire pipeline to filter, create, standardize, and compute average motif data.
+
+        Args:
+            df (pd.DataFrame): The input dataframe containing sequence and structure data.
+
+        Returns:
+            pd.DataFrame: The processed dataframe with average motif data.
+        """
         # initial filtering
         df = df.query("num_aligned > 2000 and sn > 4.0")
-        # create initial motif dataframe each motif is its own row
+        # step 1: create initial motif dataframe each motif is its own row
         df_motif = self.__create_initial_motif_dataframe(df)
-        # standarize motifs so they are all in the same orientation
+        # step 2: standarize motifs so they are all in the same orientation
         df_motif = self.__standardize_motif_dataframe(df_motif)
-        all_data = []
+        # step 3: get the average motif data for each motif
+        df_motif_avg = self.__get_avg_motif_dataframe(df_motif)
+        return df_motif_avg
 
     # step 1 ##################################################################
-    def __create_initial_motif_dataframe(self, df):
+    def __create_initial_motif_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create the initial motif dataframe from the input dataframe.
+
+        Args:
+            df (pd.DataFrame): The input dataframe containing sequence and structure data.
+
+        Returns:
+            pd.DataFrame: The initial motif dataframe.
+        """
         all_data = []
         for _, row in df.iterrows():
             ss = SecStruct(row["sequence"], row["structure"])
@@ -257,11 +278,11 @@ class GenerateMotifDataFrame:
 
         Args:
             m (Motif): The motif object.
-            row (dict): The row containing the sequence, data, and name.
+            row (pd.Series): The row containing the sequence, data, and name.
+            m_pos (int): The position of the motif.
 
         Returns:
-            dict: A dictionary containing the motif data.
-
+            Dict[str, Any]: A dictionary containing the motif data.
         """
         strands = m.strands
         first_bp = [strands[0][0] - 1, strands[1][-1] + 1]
@@ -318,6 +339,86 @@ class GenerateMotifDataFrame:
             orient="records",
         )
         return df_motif
+
+    # step 3 ##################################################################
+    def __get_pdb_path(self, m_sequence: str) -> List[str]:
+        """
+        Get the paths of PDB files for a given motif sequence.
+
+        Args:
+            m_sequence (str): The motif sequence.
+
+        Returns:
+            List[str]: A list of paths to PDB files.
+
+        Raises:
+            ValueError: If no PDB files are found for the given motif sequence.
+
+        """
+        motif_seq_path = m_sequence.replace("&", "_")
+        path = f"{DATA_PATH}/pdbs"
+        all_pdbs = []
+        if os.path.exists(f"{path}/{motif_seq_path}"):
+            pdbs = glob.glob(f"{path}/{motif_seq_path}/*.pdb")
+            if len(pdbs) == 0:
+                pdbs = glob.glob(f"{path}/{motif_seq_path}/*/*.pdb")
+            if len(pdbs) == 0:
+                raise ValueError(f"No pdbs found for {motif_seq_path}")
+            all_pdbs.extend(pdbs)
+        rev_motif_seq_path = motif_seq_path[::-1]
+        if os.path.exists(f"{path}/{rev_motif_seq_path}"):
+            pdbs = glob.glob(f"{path}/{rev_motif_seq_path}/*.pdb")
+            if len(pdbs) == 0:
+                pdbs = glob.glob(f"{path}/{rev_motif_seq_path}/*/*.pdb")
+            if len(pdbs) == 0:
+                raise ValueError(f"No pdbs found for {rev_motif_seq_path}")
+            all_pdbs.extend(pdbs)
+        return all_pdbs
+
+    def __get_likely_pairs_for_symmetric_junction(self, m_sequence):
+        seqs = m_sequence.split("&")
+        pairs = []
+        if len(seqs[0]) == len(seqs[1]):
+            for n1, n2 in zip(seqs[0], seqs[1][::-1]):
+                pairs.append(n1 + n2)
+            pairs.append("")
+            for n1, n2 in zip(seqs[0], seqs[1][::-1]):
+                pairs.append(n2 + n1)
+        else:
+            pairs = [""] * len(m_sequence)
+        return pairs
+
+    def __get_avg_motif_dataframe(self, df_motif):
+        all_data = []
+        for motif_seq, g in df_motif.groupby("m_sequence"):
+            pdb_paths = self.__get_pdb_path(motif_seq)
+            m_data_array = np.array(g["m_data"].tolist())
+            m_data_avg = np.mean(m_data_array, axis=0)
+            m_data_std = np.std(m_data_array, axis=0)
+            m_data_cv = m_data_std / m_data_avg
+            m_data_cv[np.isnan(m_data_cv)] = 0
+            pairs = self.__get_likely_pairs_for_symmetric_junction(motif_seq)
+            data = {
+                "constructs": g["construct"].tolist(),
+                "has_pdbs": len(pdb_paths) > 0,
+                "m_data_array": m_data_array,
+                "m_data_avg": m_data_avg,
+                "m_data_cv": m_data_cv,
+                "m_data_std": m_data_std,
+                "m_first_bp": g["m_first_bp"].tolist(),
+                "m_second_bp": g["m_second_bp"].tolist(),
+                "m_sequence": motif_seq,
+                "m_strands": g["m_strands"].tolist(),
+                "m_structure": g["m_structure"].iloc[0],
+                "m_token": g["m_token"].iloc[0],
+                "pairs": pairs,
+                "pdbs": pdb_paths,
+            }
+            all_data.append(data)
+        df = pd.DataFrame(all_data)
+        df.to_json(
+            "data/raw-jsons/pdb_library_1_combined_motifs_avg.json", orient="records"
+        )
 
 
 def generate_motif_and_residue_dataframe():
