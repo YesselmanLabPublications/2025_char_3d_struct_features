@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sns
-from scipy.stats import ks_2samp
+from scipy.stats import ks_2samp, pearsonr, linregress
 
 
 from seq_tools import SequenceStructure, fold, to_rna, has_5p_sequence
@@ -22,7 +22,7 @@ from rna_map.mutation_histogram import (
     convert_dreem_mut_histos_to_mutation_histogram,
 )
 
-from dms_3d_features.plotting import plot_pop_avg_from_row
+from dms_3d_features.plotting import plot_pop_avg_from_row, colors_for_sequence
 
 # assume data/ is location of data
 # assume data/mutation-histograms/ is location of mutation histograms
@@ -31,6 +31,14 @@ RESOURCES_PATH = "dms_3d_features/resources"
 DATA_PATH = "data"
 
 # helper functions ##################################################################
+
+
+def r2(x, y):
+    return pearsonr(x, y)[0] ** 2
+
+
+def normalize(column):
+    return (column - column.min()) / (column.max() - column.min())
 
 
 def trim(df: pd.DataFrame, start: int, end: int) -> pd.DataFrame:
@@ -162,6 +170,20 @@ def flip_structure(structure: str) -> str:
     return new_structure
 
 
+def flip_pair(bp_name: str) -> str:
+    """
+    Flips a base pair name.
+
+    Args:
+        bp_name (str): The base pair name to be flipped.
+
+    Returns:
+        str: The flipped base pair name.
+
+    """
+    return bp_name[::-1]
+
+
 # random funcs ######################################################################
 
 
@@ -178,7 +200,7 @@ def find_max_nomod_mutations():
 # processing steps ##################################################################
 
 
-# step 1: convert raw pickled mutation histograms to dataframe json files
+# step 1: convert raw pickled mutation histograms to dataframe json files ##########
 def convert_mut_histos_to_df():
     """
     Converts mutation histograms to a DataFrame and saves the results as JSON files.
@@ -222,9 +244,10 @@ def convert_mut_histos_to_df():
         # Combine the results into a single DataFrame
         final_result = pd.concat(results)
         final_result = trim_p5_and_p3(final_result)
-        final_result.to_json(f"data/raw-jsons/{name}.json", orient="records")
+        final_result.to_json(f"data/raw-jsons/constructs/{name}.json", orient="records")
 
 
+# step 2: generate motif dataframes ################################################
 class GenerateMotifDataFrame:
     """
     A class used to generate raw data from constructs and group it into motifs
@@ -242,15 +265,15 @@ class GenerateMotifDataFrame:
         """
         # initial filtering
         df = df.query("num_aligned > 2000 and sn > 4.0")
-        # step 1: create initial motif dataframe each motif is its own row
+        # step 2A: create initial motif dataframe each motif is its own row
         df_motif = self.__create_initial_motif_dataframe(df)
-        # step 2: standarize motifs so they are all in the same orientation
+        # step 2B: standarize motifs so they are all in the same orientation
         df_motif = self.__standardize_motif_dataframe(df_motif)
-        # step 3: get the average motif data for each motif
+        # step 2C: get the average motif data for each motif
         df_motif_avg = self.__get_avg_motif_dataframe(df_motif)
         return df_motif_avg
 
-    # step 1 ##################################################################
+    # step 2A ##################################################################
     def __create_initial_motif_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Create the initial motif dataframe from the input dataframe.
@@ -268,7 +291,7 @@ class GenerateMotifDataFrame:
                 all_data.append(self.__get_motif_data(m, row, j))
         df_motif = pd.DataFrame(all_data)
         df_motif.to_json(
-            "data/raw-jsons/pdb_library_1_combined_motifs.json", orient="records"
+            f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs.json", orient="records"
         )
         return df_motif
 
@@ -285,10 +308,13 @@ class GenerateMotifDataFrame:
             Dict[str, Any]: A dictionary containing the motif data.
         """
         strands = m.strands
+        # TODO rename these to make sense
         first_bp = [strands[0][0] - 1, strands[1][-1] + 1]
         second_bp = [strands[0][-1] + 1, strands[1][0] - 1]
         first_bp_id = row["sequence"][first_bp[0]] + row["sequence"][first_bp[1]]
         second_bp_id = row["sequence"][second_bp[0]] + row["sequence"][second_bp[1]]
+        flank_bp_5p = row["sequence"][strands[0][0]] + row["sequence"][strands[1][-1]]
+        flank_bp_3p = row["sequence"][strands[0][-1]] + row["sequence"][strands[1][0]]
         m_data = []
         for i, strand in enumerate(strands):
             for pos in strand:
@@ -306,41 +332,53 @@ class GenerateMotifDataFrame:
             "m_structure": m.structure,  # structure of the motif
             "m_strands": m_strands,  # positions of each nuclotide of the motif
             "m_token": token,  # token for the motif such as 1x1, 2x2, etc
-            "m_first_bp": first_bp_id,  # first base pair of the motif before flanking
-            "m_second_bp": second_bp_id,  # second base pair of the motif after flanking
+            "m_flank_bp_5p": flank_bp_5p,  # base pair at the 5' end of the motif
+            "m_flank_bp_3p": flank_bp_3p,  # base pair at the 3' end of the motif
+            "m_second_flank_bp_5p": first_bp_id,  # first base pair of the motif before flanking
+            "m_second_flank_bp_3p": second_bp_id,  # second base pair of the motif after flanking
             "num_aligned": row["num_aligned"],  # number of aligned reads
             "sn": row["sn"],  # signal to noise ratio
         }
         return data
 
-    # step 2 ##################################################################
+    # step 2B ##################################################################
     def __standardize_motif_dataframe(self, df_motif):
         df_motif["strand1"] = df_motif["m_sequence"].apply(lambda x: x.split("&")[0])
         df_motif["strand2"] = df_motif["m_sequence"].apply(lambda x: x.split("&")[1])
-        df_motif["orientation"] = "non-flipped"
+        df_motif["m_orientation"] = "non-flipped"
         for i, row in df_motif.iterrows():
             if len(row["strand2"]) < len(row["strand1"]):
                 continue
             if len(row["strand1"]) == len(row["strand2"]):
                 if row["strand1"] < row["strand2"]:
                     continue
+            len_s1 = len(row["strand1"])
+            flipped_strands = (
+                row["m_strands"][len_s1 + 1 :] + [-1] + row["m_strands"][:len_s1]
+            )
+            flipped_data = row["m_data"][len_s1 + 1 :] + [0] + row["m_data"][:len_s1]
             df_motif.at[i, "m_sequence"] = row["strand2"] + "&" + row["strand1"]
             df_motif.at[i, "m_structure"] = flip_structure(row["m_structure"])
-            df_motif.at[i, "m_strands"] = row["m_strands"][::-1]
+            df_motif.at[i, "m_strands"] = flipped_strands
             df_motif.at[i, "m_token"] = row["m_token"][::-1]
-            df_motif.at[i, "m_data"] = row["m_data"][::-1]
-            second_bp = row["m_second_bp"]
-            df_motif.at[i, "m_second_bp"] = row["m_first_bp"]
-            df_motif.at[i, "m_first_bp"] = second_bp
-            df_motif.at[i, "orientation"] = "flipped"
+            df_motif.at[i, "m_data"] = flipped_data
+            p3_bp = flip_pair(row["m_flank_bp_3p"])
+            df_motif.at[i, "m_flank_bp_3p"] = flip_pair(row["m_flank_bp_5p"])
+            df_motif.at[i, "m_flank_bp_5p"] = p3_bp
+            p3_bp = flip_pair(row["m_second_flank_bp_3p"])
+            df_motif.at[i, "m_second_flank_bp_3p"] = flip_pair(
+                row["m_second_flank_bp_5p"]
+            )
+            df_motif.at[i, "m_second_flank_bp_5p"] = p3_bp
+            df_motif.at[i, "m_orientation"] = "flipped"
         df_motif.drop(["strand1", "strand2"], axis=1, inplace=True)
         df_motif.to_json(
-            "data/raw-jsons/pdb_library_1_combined_motifs_standardized.json",
+            f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_standard.json",
             orient="records",
         )
         return df_motif
 
-    # step 3 ##################################################################
+    # step 2C ##################################################################
     def __get_pdb_path(self, m_sequence: str) -> List[str]:
         """
         Get the paths of PDB files for a given motif sequence.
@@ -375,7 +413,16 @@ class GenerateMotifDataFrame:
             all_pdbs.extend(pdbs)
         return all_pdbs
 
-    def __get_likely_pairs_for_symmetric_junction(self, m_sequence):
+    def __get_likely_pairs_for_symmetric_junction(self, m_sequence: str) -> List[str]:
+        """
+        Get the likely base pairs for a symmetric junction in the motif sequence.
+
+        Args:
+            m_sequence (str): The motif sequence.
+
+        Returns:
+            List[str]: A list of likely base pairs for the symmetric junction.
+        """
         seqs = m_sequence.split("&")
         pairs = []
         if len(seqs[0]) == len(seqs[1]):
@@ -388,7 +435,16 @@ class GenerateMotifDataFrame:
             pairs = [""] * len(m_sequence)
         return pairs
 
-    def __get_avg_motif_dataframe(self, df_motif):
+    def __get_avg_motif_dataframe(self, df_motif: pd.DataFrame) -> pd.DataFrame:
+        """
+        Get the average motif data for each motif in the dataframe.
+
+        Args:
+            df_motif (pd.DataFrame): The standardized motif dataframe.
+
+        Returns:
+            pd.DataFrame: The dataframe with average motif data.
+        """
         all_data = []
         for motif_seq, g in df_motif.groupby("m_sequence"):
             pdb_paths = self.__get_pdb_path(motif_seq)
@@ -405,8 +461,12 @@ class GenerateMotifDataFrame:
                 "m_data_avg": m_data_avg,
                 "m_data_cv": m_data_cv,
                 "m_data_std": m_data_std,
-                "m_first_bp": g["m_first_bp"].tolist(),
-                "m_second_bp": g["m_second_bp"].tolist(),
+                "m_flank_bp_5p": g["m_flank_bp_5p"].tolist(),
+                "m_flank_bp_3p": g["m_flank_bp_3p"].tolist(),
+                "m_orientation": g["m_orientation"].tolist(),
+                "m_pos": g["m_pos"].tolist(),
+                "m_second_flank_bp_5p": g["m_second_flank_bp_5p"].tolist(),
+                "m_second_flank_bp_3p": g["m_second_flank_bp_3p"].tolist(),
                 "m_sequence": motif_seq,
                 "m_strands": g["m_strands"].tolist(),
                 "m_structure": g["m_structure"].iloc[0],
@@ -417,137 +477,128 @@ class GenerateMotifDataFrame:
             all_data.append(data)
         df = pd.DataFrame(all_data)
         df.to_json(
-            "data/raw-jsons/pdb_library_1_combined_motifs_avg.json", orient="records"
+            f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json",
+            orient="records",
         )
 
 
-def generate_motif_and_residue_dataframe():
-    df = pd.read_json("data/raw-jsons/pdb_library_1_combined_motifs.json")
-    all_data = []
-    res_data = []
-    path = "data/pdbs"
-    for motif_seq, g in df.groupby("m_sequence"):
-        motif_seq_path = motif_seq.replace("&", "_")
-        all_pdbs = []
-        if os.path.exists(f"{path}/{motif_seq_path}"):
-            pdbs = glob.glob(f"{path}/{motif_seq_path}/*.pdb")
-            if len(pdbs) == 0:
-                pdbs = glob.glob(f"{path}/{motif_seq_path}/*/*.pdb")
-            if len(pdbs) == 0:
-                raise ValueError(f"No pdbs found for {motif_seq_path}")
-            all_pdbs.extend(pdbs)
-        rev_motif_seq_path = motif_seq_path[::-1]
-        if os.path.exists(f"{path}/{rev_motif_seq_path}"):
-            pdbs = glob.glob(f"{path}/{rev_motif_seq_path}/*.pdb")
-            if len(pdbs) == 0:
-                pdbs = glob.glob(f"{path}/{rev_motif_seq_path}/*/*.pdb")
-            if len(pdbs) == 0:
-                raise ValueError(f"No pdbs found for {rev_motif_seq_path}")
-            all_pdbs.extend(pdbs)
-        m_data_array = np.array(g["m_data"].tolist())
-        m_data_avg = np.mean(m_data_array, axis=0)
-        m_data_std = np.std(m_data_array, axis=0)
-        m_data_cv = m_data_std / m_data_avg
-        m_data_cv[np.isnan(m_data_cv)] = 0
-        pairs = []
-        seqs = g["m_sequence"].iloc[0].split("&")
-        m_strands = []
-        for s in g["m_strands"].to_list():
-            m_strands.append(s[0] + [-1] + s[1])
-        if len(seqs[0]) == len(seqs[1]):
-            for n1, n2 in zip(seqs[0], seqs[1][::-1]):
-                pairs.append(n1 + n2)
-            pairs.append("")
-            for n1, n2 in zip(seqs[0], seqs[1][::-1]):
-                pairs.append(n2 + n1)
-        else:
-            pairs = [""] * len(motif_seq_path)
-        for i, (e, s) in enumerate(zip(motif_seq_path, g.iloc[0]["m_structure"])):
-            if e == "_":
-                continue
-            if e != "A" and e != "C":
-                continue
-            break_char = motif_seq_path.find("_")
-            r_type = "NON-WC"
-            if s == "(" or s == ")":
-                r_type = "WC"
-            pdb_path = ""
-            if len(all_pdbs) > 0:
-                pdb_path = all_pdbs[0]
-            data = {
-                "m_sequence": motif_seq,
-                "m_structure": g["m_structure"].iloc[0],
-                "m_token": g["m_token"].iloc[0],
-                "m_length": len(motif_seq) - 1,
-                "m_strands": m_strands,
-                "nuc": e,
-                "r_pos": i,
-                "r_data": m_data_array[:, i].tolist(),
-                "r_avg": m_data_avg[i],
-                "r_std": m_data_std[i],
-                "r_cv": m_data_cv[i],
-                "r_type": r_type,
-                "pair_type": None,
-                "has_pdbs": len(all_pdbs) > 0,
-                "constructs": g["construct"].tolist(),
-                "likely_pair": pairs[i],
-                "n_pdbs": len(all_pdbs),
-                "pdb_path": pdb_path,
-                "pdb_pos": i + 3 if i < break_char else i + 3 + 3,
-            }
-            res_data.append(data)
+# step 3: generate residue dataframes ##############################################
+class GenerateResidueDataFrame:
+    def run(self, df_motif):
+        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
+        all_data = []
+        for _, row in df_residues_avg.iterrows():
+            for i in range(len(row["r_data"])):
+                data = {
+                    "both_purine": row["both_purine"],
+                    "both_pyrimidine": row["both_pyrimidine"],
+                    "constructs": row["constructs"][i],
+                    "has_pdbs": row["has_pdbs"],
+                    "likely_pair": row["likely_pair"],
+                    "m_flank_bp_5p": row["m_flank_bp_5p"][i],
+                    "m_flank_bp_3p": row["m_flank_bp_3p"][i],
+                    "m_orientation": row["m_orientation"][i],
+                    "m_pos": row["m_pos"][i],
+                    "m_second_flank_bp_5p": row["m_second_flank_bp_5p"][i],
+                    "m_second_flank_bp_3p": row["m_second_flank_bp_3p"][i],
+                    "m_sequence": row["m_sequence"],
+                    "m_structure": row["m_structure"],
+                    "m_token": row["m_token"],
+                    "n_pdbs": row["n_pdbs"],
+                    "pair_type": None,
+                    "p5_res": row["p5_res"],
+                    "p5_type": row["p5_type"],
+                    "p3_res": row["p3_res"],
+                    "p3_type": row["p3_type"],
+                    "r_data": row["r_data"][i],
+                    "r_nuc": row["r_nuc"],
+                    "r_loc_pos": row["r_loc_pos"],
+                    "r_pos": row["r_pos"][i],
+                    "r_type": row["r_type"],
+                }
+                all_data.append(data)
+        df_residues = pd.DataFrame(all_data)
+        df_residues.to_json(
+            f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json",
+            orient="records",
+        )
 
-        data = {
-            "m_sequence": motif_seq,
-            "m_structure": g["m_structure"].iloc[0],
-            "m_token": g["m_token"].iloc[0],
-            "m_data_avg": m_data_avg,
-            "m_data_std": m_data_std,
-            "m_data_cv": m_data_cv,
-            "m_data_array": m_data_array,
-            "constructs": g["construct"].tolist(),
-            "m_strands": g["m_strands"].tolist(),
-            "m_first_bp": g["m_first_bp"].tolist(),
-            "m_second_bp": g["m_second_bp"].tolist(),
-            "pdbs": all_pdbs,
-            "has_pdbs": len(all_pdbs) > 0,
-        }
-        all_data.append(data)
-    df = pd.DataFrame(all_data)
-    df.to_json(
-        "data/raw-jsons/pdb_library_1_combined_motifs_avg.json", orient="records"
-    )
-    df_res = pd.DataFrame(res_data)
-    df_res.to_json(
-        "data/raw-jsons/pdb_library_1_combined_motifs_res.json", orient="records"
-    )
-
-
-def generate_all_residue_dataframe():
-    df = pd.read_json("data/raw-jsons/pdb_library_1_combined_motifs_res.json")
-    all_data = []
-    for i, row in df.iterrows():
-        r_pos = row["r_pos"]
-        for j in range(len(row["r_data"])):
-            data = {
-                "m_sequence": row["m_sequence"],
-                "m_structure": row["m_structure"],
-                "m_token": row["m_token"],
-                "nuc": row["nuc"],
-                "nuc_pos": row["m_strands"][j][r_pos],
-                "r_pos": row["r_pos"],
-                "r_data": row["r_data"][j],
-                "r_pos": r_pos,
-                "r_type": row["r_type"],
-                "pair_type": row["likely_pair"],
-                "pdb_pos": row["pdb_pos"],
-                "construct": row["constructs"][j],
-            }
-            all_data.append(data)
-    df = pd.DataFrame(all_data)
-    df.to_json(
-        "data/raw-jsons/pdb_library_1_combined_motifs_res_all.json", orient="records"
-    )
+    def __generate_avg_residue_dataframe(self, df_motif):
+        all_data = []
+        for _, row in df_motif.iterrows():
+            m_sequence = row["m_sequence"]
+            m_structure = row["m_structure"]
+            for i, (e, s) in enumerate(zip(m_sequence, m_structure)):
+                if e == "_":
+                    continue
+                if e != "A" and e != "C":
+                    continue
+                r_type = "NON-WC"
+                if s == "(" or s == ")":
+                    r_type = "WC"
+                p5_res = None
+                p3_res = None
+                p5_type = None
+                p3_type = None
+                both_purine = None
+                both_pyrimidine = None
+                if i != 0 and m_sequence[i - 1] != "_":
+                    p5_res = m_sequence[i - 1]
+                if i != len(m_sequence) - 1 and m_sequence[i + 1] != "_":
+                    p3_res = m_sequence[i + 1]
+                if p5_res == "A" or p5_res == "G":
+                    p5_type = "PURINE"
+                else:
+                    p5_type = "PYRIMIDINE"
+                if p3_res == "A" or p3_res == "G":
+                    p3_type = "PURINE"
+                else:
+                    p3_type = "PYRIMIDINE"
+                if p5_type == "PURINE" and p3_type == "PURINE":
+                    both_purine = True
+                else:
+                    both_purine = False
+                if p5_type == "PYRIMIDINE" and p3_type == "PYRIMIDINE":
+                    both_pyrimidine = True
+                else:
+                    both_pyrimidine = False
+                data = {
+                    "both_purine": both_purine,
+                    "both_pyrimidine": both_pyrimidine,
+                    "constructs": row["constructs"],
+                    "has_pdbs": len(row["pdbs"]) > 0,
+                    "likely_pair": row["pairs"][i],
+                    "m_flank_bp_5p": row["m_flank_bp_5p"],
+                    "m_flank_bp_3p": row["m_flank_bp_3p"],
+                    "m_orientation": row["m_orientation"],
+                    "m_pos": row["m_pos"],
+                    "m_second_flank_bp_5p": row["m_second_flank_bp_5p"],
+                    "m_second_flank_bp_3p": row["m_second_flank_bp_3p"],
+                    "m_sequence": m_sequence,
+                    "m_structure": m_structure,
+                    "m_token": row["m_token"],
+                    "n_pdbs": len(row["pdbs"]),
+                    "pair_type": None,
+                    "p5_res": p5_res,
+                    "p5_type": p5_type,
+                    "p3_res": p3_res,
+                    "p3_type": p3_type,
+                    "r_avg": row["m_data_avg"][i],
+                    "r_cv": row["m_data_cv"][i],
+                    "r_data": np.array(row["m_data_array"])[:, i].tolist(),
+                    "r_nuc": e,
+                    "r_loc_pos": i,
+                    "r_pos": np.array(row["m_strands"])[:, i].tolist(),
+                    "r_std": row["m_data_std"][i],
+                    "r_type": r_type,
+                }
+                all_data.append(data)
+        df_residues = pd.DataFrame(all_data)
+        df_residues.to_json(
+            f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_avg.json",
+            orient="records",
+        )
+        return df_residues
 
 
 def plot_dms_vs_nomod(df, df_nomod):
@@ -646,16 +697,118 @@ def plot_ac_vs_size(df):
     plt.show()
 
 
+def plot_motif_boxplot_stripplot(df, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    sequence = df.iloc[0]["m_sequence"]
+    structure = df.iloc[0]["m_structure"]
+    pos = list(range(len(sequence)))
+    colors = colors_for_sequence(sequence)
+    custom_palette = {}
+    for p, c in zip(pos, colors):
+        custom_palette[str(p)] = c
+    labels = []
+    for n, s in zip(df.iloc[0]["m_sequence"], df.iloc[0]["m_structure"]):
+        labels.append(f"{n}\n{s}")
+    sns.boxplot(
+        x="r_loc_pos",
+        y="r_data",
+        data=df,
+        order=pos,
+        palette=custom_palette,
+        showfliers=False,
+        ax=ax,
+    )
+    sns.stripplot(
+        x="r_loc_pos", y="r_data", data=df, order=pos, color="black", size=5, ax=ax
+    )
+    ax.set_xticks(ticks=range(len(pos)), labels=labels)
+    return ax
+
+
+def plot_motif_boxplot_stripplot_by_m_pos(df):
+    x, y = 2, 3
+    fig, axes = plt.subplots(x, y, figsize=(10, 5))
+    ylim = df["r_data"].max() + 0.01
+    axes = [axes[i][j] for i in range(x) for j in range(y)]
+    for i, ax in enumerate(axes):
+        df_sub = df.query("m_pos == @i")
+        if len(df_sub) == 0:
+            continue
+        plot_motif_boxplot_stripplot(df_sub, ax=ax)
+        ax.set_title(f"Position {i}")
+        ax.set_ylim(0, ylim)  # TODO figure out what the y limit should be
+
+
+def generate_stats(df):
+    all_data = []
+    for [m_sequence, r_loc_pos], g in df.groupby(["m_sequence", "r_loc_pos"]):
+        g_sort = g.sort_values("r_pos", ascending=True)
+        r = linregress(g["r_pos"], normalize(g["r_data"]))
+        if len(g) > 20:
+            min_vals = g_sort["r_data"].values[0:10]
+            max_vals = g_sort["r_data"].values[-10:]
+            ks_2samp_stat, ks_2samp_p_value = ks_2samp(min_vals, max_vals)
+        else:
+            ks_2samp_stat, ks_2samp_p_value = -1, -1
+        data = {
+            "r_nuc": g["r_nuc"].iloc[0],
+            "r_type": g["r_type"].iloc[0],
+            "pairs": g["likely_pair"].iloc[0],
+            "m_sequence": m_sequence,
+            "m_token": g["m_token"].iloc[0],
+            "r_loc_pos": r_loc_pos,
+            "slope": r.slope,
+            "intercept": r.intercept,
+            "r2": r.rvalue**2,
+            "p_val ": r.pvalue,
+            "ks_stat": ks_2samp_stat,
+            "ks_p_val": ks_2samp_p_value,
+            "count": len(g),
+            "r_pos_min": g["r_pos"].min(),
+            "r_pos_max": g["r_pos"].max(),
+            "r_data_min": g["r_data"].min(),
+            "r_data_max": g["r_data"].max(),
+            "r_data": g["r_data"].tolist(),
+            "r_pos": g["r_pos"].tolist(),
+        }
+        all_data.append(data)
+    df_stats = pd.DataFrame(all_data)
+    df_stats.to_json("stats.json", orient="records")
+
+
+def regen_data():
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1_combined.json")
+    gen = GenerateMotifDataFrame()
+    gen.run(df)
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
+    gen = GenerateResidueDataFrame()
+    gen.run(df)
+
+
 def main():
     """
     main function for script
     """
-    df = df = pd.read_json("data/raw-jsons/pdb_library_1_combined.json")
-    gen = GenerateMotifDataFrame()
-    gen.run(df)
+    regen_data()
     exit()
-
-    generate_all_residue_dataframe()
+    df = pd.read_json("data/raw-jsons/residues/pdb_library_1_residues.json")
+    generate_stats(df)
+    exit()
+    df_motif = df.query('m_sequence == "AAA&UAU"')
+    print(df_motif["m_orientation"].unique())
+    x, y = 1, 2
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    df_sub = df_motif.query("m_orientation == 'non-flipped'")
+    plot_motif_boxplot_stripplot(df_sub, ax=axes[0])
+    axes[0].set_title(f"Type: non-flipped")
+    axes[0].set_ylim(0, 0.03)
+    df_sub = df_motif.query("m_orientation == 'flipped'")
+    plot_motif_boxplot_stripplot(df_sub, ax=axes[1])
+    axes[1].set_title(f"Type: flipped")
+    axes[1].set_ylim(0, 0.03)
+    plt.tight_layout()
+    plt.show()
     exit()
     df = pd.read_json("data/raw-jsons/pdb_library_1_combined_motifs_res.json")
     df["ln_r_avg"] = np.log(df["r_avg"])

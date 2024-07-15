@@ -38,7 +38,14 @@ def colors_for_sequence(seq: str) -> list:
         ['red', 'blue', 'orange', 'green']
 
     """
-    color_mapping = {"A": "red", "C": "blue", "G": "orange", "T": "green", "U": "green"}
+    color_mapping = {
+        "A": "red",
+        "C": "blue",
+        "G": "orange",
+        "T": "green",
+        "U": "green",
+        "&": "gray",
+    }
     colors = []
     for e in seq:
         try:
