@@ -182,6 +182,25 @@ def flip_pair(bp_name: str) -> str:
 
     """
     return bp_name[::-1]
+    
+def get_resi_pos(seq: str, pos: int) -> int:
+    """
+    Calculate the residue position starting from 0.
+
+    Args:
+        seq (str): The sequence string.
+        pos (int): The original position (starting from 3).
+
+    Returns:
+        int: The adjusted position.
+    """
+    strand_len = seq.split("_")
+    if pos > (len(strand_len[0]) + 2):
+        new_pos = pos - 6
+        return new_pos
+    else:
+        new_pos = pos - 3
+        return new_pos
 
 
 # random funcs ######################################################################
@@ -399,15 +418,11 @@ class GenerateMotifDataFrame:
         if os.path.exists(f"{path}/{motif_seq_path}"):
             pdbs = glob.glob(f"{path}/{motif_seq_path}/*.pdb")
             if len(pdbs) == 0:
-                pdbs = glob.glob(f"{path}/{motif_seq_path}/*/*.pdb")
-            if len(pdbs) == 0:
                 raise ValueError(f"No pdbs found for {motif_seq_path}")
             all_pdbs.extend(pdbs)
-        rev_motif_seq_path = motif_seq_path[::-1]
+        rev_motif_seq_path = motif_seq_path[1] + '_' + motif_seq_path[0]
         if os.path.exists(f"{path}/{rev_motif_seq_path}"):
             pdbs = glob.glob(f"{path}/{rev_motif_seq_path}/*.pdb")
-            if len(pdbs) == 0:
-                pdbs = glob.glob(f"{path}/{rev_motif_seq_path}/*/*.pdb")
             if len(pdbs) == 0:
                 raise ValueError(f"No pdbs found for {rev_motif_seq_path}")
             all_pdbs.extend(pdbs)
@@ -484,8 +499,8 @@ class GenerateMotifDataFrame:
 
 # step 3: generate residue dataframes ##############################################
 class GenerateResidueDataFrame:
-    def run(self, df_motif):
-        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
+    def run(self, df_motif, df_bp):
+        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif, df_bp)
         all_data = []
         for _, row in df_residues_avg.iterrows():
             for i in range(len(row["r_data"])):
@@ -515,6 +530,9 @@ class GenerateResidueDataFrame:
                     "r_loc_pos": row["r_loc_pos"],
                     "r_pos": row["r_pos"][i],
                     "r_type": row["r_type"],
+                    "r_basepair_type": row["r_basepair_type"],
+                    "r_pdb_nuc_pair": row["r_pdb_nuc_pair"],
+                    "pdb_path": row["pdb_path"],
                 }
                 all_data.append(data)
         df_residues = pd.DataFrame(all_data)
@@ -525,10 +543,21 @@ class GenerateResidueDataFrame:
 
     def __generate_avg_residue_dataframe(self, df_motif):
         all_data = []
+        bp_dict = {}
+        for k, bp_row in df_bp.iterrows():
+            new_pos = get_resi_pos(bp_row["sequence"], bp_row["pos"])
+            key = (bp_row["sequence"].replace("_", "&"), bp_row["nucleotide"], new_pos)
+            bp_dict[key] = (bp_row["type of pair"], bp_row["pair"])
+            
         for _, row in df_motif.iterrows():
             m_sequence = row["m_sequence"]
             m_structure = row["m_structure"]
             for i, (e, s) in enumerate(zip(m_sequence, m_structure)):
+                key = (m_sequence, e, i)
+                if key in bp_dict:
+                    bp_type, pair = bp_dict[key]
+                else:
+                    bp_type, pair = "None", "None"
                 if e == "_":
                     continue
                 if e != "A" and e != "C":
@@ -591,6 +620,9 @@ class GenerateResidueDataFrame:
                     "r_pos": np.array(row["m_strands"])[:, i].tolist(),
                     "r_std": row["m_data_std"][i],
                     "r_type": r_type,
+                    "r_basepair_type": bp_type,
+                    "r_pdb_nuc_pair": pair,
+                    "pdb_path": row["pdbs"],
                 }
                 all_data.append(data)
         df_residues = pd.DataFrame(all_data)
@@ -782,8 +814,9 @@ def regen_data():
     gen = GenerateMotifDataFrame()
     gen.run(df)
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
+    df_bp = pd.read_csv("resources/csvs/basepair_data_for_motifs.csv")
     gen = GenerateResidueDataFrame()
-    gen.run(df)
+    gen.run(df, df_bp)
 
 
 def main():
