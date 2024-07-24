@@ -2,7 +2,7 @@
 
 ## data to download 
 
-wget https://drive.google.com/drive/u/1/folders/1PsCEmbrsZ1PdawaouCW5Jx5munedpZIT
+wget https://drive.google.com/file/d/18_PfUXk4ntxNcvc5p2Xzb6En7mfMhmsN/view?usp=share_link
 
 ## install code
 
