@@ -2,7 +2,7 @@
 
 ## data to download 
 
-wget https://www.dropbox.com/scl/fi/1ziza66qjezd1olgxfji1/data_3d_structure_dms.zip?rlkey=qcattfrppq4mwbclkcwrjs3bf&dl=0
+wget https://drive.google.com/drive/u/1/folders/1PsCEmbrsZ1PdawaouCW5Jx5munedpZIT
 
 ## install code
 
