@@ -1,0 +1,2 @@
+include README.md
+recursive-include dms_3d_features/resources *.csv
