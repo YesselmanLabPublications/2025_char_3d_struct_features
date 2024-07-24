@@ -336,12 +336,74 @@ def plot_pop_avg_traces_all(df, plot_sequence=False, ylim=None, **kwargs):
     return fig
 
 
+def plot_motif_boxplot_stripplot(df: pd.DataFrame, ax=None) -> plt.Axes:
+    """
+    Plots a boxplot and stripplot for motif data.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame containing the motif data.
+        ax (Optional[plt.Axes]): The matplotlib Axes object to plot on. If not provided, a new figure and Axes will be created.
+
+    Returns:
+        plt.Axes: The matplotlib Axes object containing the plot.
+
+    Raises:
+        None
+
+    Example:
+        df = pd.DataFrame(...)
+        ax = plot_motif_boxplot_stripplot(df)
+        plt.show()
+    """
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    sequence = df.iloc[0]["m_sequence"]
+    structure = df.iloc[0]["m_structure"]
+    pos = list(range(len(sequence)))
+    colors = colors_for_sequence(sequence)
+    custom_palette = {}
+    for p, c in zip(pos, colors):
+        custom_palette[str(p)] = c
+    labels = []
+    for n, s in zip(df.iloc[0]["m_sequence"], df.iloc[0]["m_structure"]):
+        labels.append(f"{n}\n{s}")
+    sns.boxplot(
+        x="r_loc_pos",
+        y="r_data",
+        data=df,
+        order=pos,
+        palette=custom_palette,
+        showfliers=False,
+        ax=ax,
+    )
+    sns.stripplot(
+        x="r_loc_pos", y="r_data", data=df, order=pos, color="black", size=5, ax=ax
+    )
+    ax.set_xticks(ticks=range(len(pos)), labels=labels)
+    return ax
+
+
+def plot_motif_boxplot_stripplot_by_m_pos(df):
+    x, y = 2, 3
+    fig, axes = plt.subplots(x, y, figsize=(10, 5))
+    ylim = df["r_data"].max() + 0.01
+    axes = [axes[i][j] for i in range(x) for j in range(y)]
+    for i, ax in enumerate(axes):
+        df_sub = df.query("m_pos == @i")
+        if len(df_sub) == 0:
+            continue
+        plot_motif_boxplot_stripplot(df_sub, ax=ax)
+        ax.set_title(f"Position {i}")
+        ax.set_ylim(0, ylim)  # TODO figure out what the y limit should be
+
+
 # style functions #############################################################
 
 
 def publication_style_ax(ax):
     """
-    Sets the publication style for the given matplotlib Axes object.
+    Sets the publication style for the given matplotlib Axes object, including setting
+        the font to Arial.
 
     Args:
         ax (matplotlib.axes.Axes): The Axes object to apply the publication style to.
@@ -356,6 +418,16 @@ def publication_style_ax(ax):
     ax.xaxis.label.set_fontsize(fsize)
     ax.yaxis.label.set_fontsize(fsize)
     ax.tick_params(axis="both", which="major", labelsize=fsize - 2)
+
+    # Set font to Arial for the labels and title
+    ax.xaxis.label.set_fontname("Arial")
+    ax.yaxis.label.set_fontname("Arial")
+    ax.title.set_fontsize(fsize)
+    ax.title.set_fontname("Arial")
+
+    # Set font for tick labels
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontname("Arial")
 
 
 def publication_scatter(ax, x, y, **kwargs):
