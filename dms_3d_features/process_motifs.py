@@ -182,7 +182,8 @@ def flip_pair(bp_name: str) -> str:
 
     """
     return bp_name[::-1]
-    
+
+
 def get_resi_pos(seq: str, pos: int) -> int:
     """
     Calculate the residue position starting from 0.
@@ -420,7 +421,7 @@ class GenerateMotifDataFrame:
             if len(pdbs) == 0:
                 raise ValueError(f"No pdbs found for {motif_seq_path}")
             all_pdbs.extend(pdbs)
-        rev_motif_seq_path = motif_seq_path[1] + '_' + motif_seq_path[0]
+        rev_motif_seq_path = motif_seq_path[1] + "_" + motif_seq_path[0]
         if os.path.exists(f"{path}/{rev_motif_seq_path}"):
             pdbs = glob.glob(f"{path}/{rev_motif_seq_path}/*.pdb")
             if len(pdbs) == 0:
@@ -541,14 +542,14 @@ class GenerateResidueDataFrame:
             orient="records",
         )
 
-    def __generate_avg_residue_dataframe(self, df_motif):
+    def __generate_avg_residue_dataframe(self, df_motif, df_bp):
         all_data = []
         bp_dict = {}
         for k, bp_row in df_bp.iterrows():
             new_pos = get_resi_pos(bp_row["sequence"], bp_row["pos"])
             key = (bp_row["sequence"].replace("_", "&"), bp_row["nucleotide"], new_pos)
             bp_dict[key] = (bp_row["type of pair"], bp_row["pair"])
-            
+
         for _, row in df_motif.iterrows():
             m_sequence = row["m_sequence"]
             m_structure = row["m_structure"]
@@ -771,7 +772,7 @@ def regen_data():
     gen = GenerateMotifDataFrame()
     gen.run(df)
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
-    df_bp = pd.read_csv("resources/csvs/basepair_data_for_motifs.csv")
+    df_bp = pd.read_csv(f"{RESOURCES_PATH}/csvs/basepair_data_for_motifs.csv")
     gen = GenerateResidueDataFrame()
     gen.run(df, df_bp)
 
