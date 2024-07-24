@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.axes as axes
+import pandas as pd
 import numpy as np
 from typing import List, Union, Optional
 
