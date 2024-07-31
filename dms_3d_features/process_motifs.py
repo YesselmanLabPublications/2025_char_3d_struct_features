@@ -78,7 +78,7 @@ def trim(df: pd.DataFrame, start: int, end: int) -> pd.DataFrame:
     return df
 
 
-def trim_p5_and_p3(df: pd.DataFrame) -> pd.DataFrame:
+def trim_p5_and_p3(df: pd.DataFrame, is_rna=True) -> pd.DataFrame:
     """
     Trims the 5' and 3' ends of the data in the DataFrame.
 
@@ -105,7 +105,8 @@ def trim_p5_and_p3(df: pd.DataFrame) -> pd.DataFrame:
         2  GCATGCAT
     """
     df_p5 = pd.read_csv(f"{RESOURCES_PATH}/csvs/p5_sequences.csv")
-    df_p5 = to_rna(df_p5)
+    if is_rna:
+        df_p5 = to_rna(df_p5)
     common_p5_seq = ""
     for p5_seq in df_p5["sequence"]:
         if has_5p_sequence(df, p5_seq):
@@ -440,13 +441,14 @@ class GenerateMotifDataFrame:
             List[str]: A list of likely base pairs for the symmetric junction.
         """
         seqs = m_sequence.split("&")
-        pairs = []
+        pairs, pairs_1, pairs_2 = [], [], []
         if len(seqs[0]) == len(seqs[1]):
             for n1, n2 in zip(seqs[0], seqs[1][::-1]):
-                pairs.append(n1 + n2)
-            pairs.append("")
+                pairs_1.append(n1 + n2)
+            pairs_1.append("")
             for n1, n2 in zip(seqs[0], seqs[1][::-1]):
-                pairs.append(n2 + n1)
+                pairs_2.append(n2 + n1)
+            pairs = pairs_1 + pairs_2[::-1]
         else:
             pairs = [""] * len(m_sequence)
         return pairs
@@ -559,8 +561,6 @@ class GenerateResidueDataFrame:
                     bp_type, pair = bp_dict[key]
                 else:
                     bp_type, pair = "None", "None"
-                if e == "_":
-                    continue
                 if e != "A" and e != "C":
                     continue
                 r_type = "NON-WC"
@@ -781,9 +781,7 @@ def main():
     """
     main function for script
     """
-    regen_data()
     exit()
-    df = pd.read_json("data/raw-jsons/residues/pdb_library_1_residues.json")
     generate_stats(df)
     exit()
     df_motif = df.query('m_sequence == "AAA&UAU"')
