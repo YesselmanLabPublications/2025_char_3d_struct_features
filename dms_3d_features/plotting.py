@@ -2,7 +2,11 @@ import matplotlib.pyplot as plt
 import matplotlib.axes as axes
 import pandas as pd
 import numpy as np
+import seaborn as sns
 from typing import List, Union, Optional
+from scipy.stats import ks_2samp, pearsonr, linregress
+from sklearn.linear_model import LinearRegression
+
 
 from rna_secstruct_design.selection import get_selection, SecStruct
 
@@ -398,10 +402,100 @@ def plot_motif_boxplot_stripplot_by_m_pos(df):
         ax.set_ylim(0, ylim)  # TODO figure out what the y limit should be
 
 
+def plot_violinplot_w_percent(
+    df: pd.DataFrame,
+    x: str,
+    y: str,
+    cutoff=-5.65,
+    cutoff_color="tab:red",
+    color="tab:blue",
+    gt_lt="greater",
+    text_pos=-7.75,
+    ax=None,
+) -> plt.Axes:
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+    sns.violinplot(x=x, y=y, data=df, color=color, density_norm="width", ax=ax)
+    ax.axvline(cutoff, color=cutoff_color, linestyle="--")
+    count = 0
+    for group_name, g in df.groupby(y):
+        if gt_lt == "greater":
+            percent = (g[x] > cutoff).sum() / len(g)
+        elif gt_lt == "less":
+            percent = (g[x] < cutoff).sum() / len(g)
+        percent *= 100
+        ax.text(
+            text_pos,
+            count + 0.020,
+            f"{percent:.2f}%",
+            va="center",
+            ha="right",
+            size=20,
+            name="Arial",
+        )
+        print(group_name, percent)
+        count += 1
+    return ax
+
+
+def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
+    """
+    Plots a scatter plot and the best fit line for the given data, including the R^2 value.
+
+    Args:
+        x (array-like): The x-values of the data points.
+        y (array-like): The y-values of the data points.
+        ax (matplotlib.axes.Axes, optional): The Axes object to plot on. If None, a new figure and axes are created.
+
+    Returns:
+        matplotlib.axes.Axes: The Axes object with the scatter plot and best fit line.
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    # Scatter plot
+    ax.scatter(x, y, s=size)
+
+    # Reshape x for sklearn
+    x = np.array(x).reshape(-1, 1)
+    y = np.array(y)
+
+    # Linear regression model
+    model = LinearRegression()
+    model.fit(x, y)
+
+    # Get the slope and intercept of the line
+    slope = model.coef_[0]
+    intercept = model.intercept_
+
+    # Generate x values for the best fit line
+    x_fit = np.linspace(min(x), max(x), 100)
+    y_fit = slope * x_fit + intercept
+
+    # Plot the best fit line
+    ax.plot(x_fit, y_fit, color="black", label="Best fit line", lw=1)
+
+    # Calculate Pearson correlation coefficient and R^2
+    r, _ = pearsonr(x.flatten(), y)
+    r_squared = r**2
+
+    # Add R^2 annotation
+    ax.text(
+        0.05,
+        0.95,
+        f"$R^2 = {r_squared:.2f}$",
+        transform=ax.transAxes,
+        fontsize=12,
+        verticalalignment="top",
+    )
+
+    return ax
+
+
 # style functions #############################################################
 
 
-def publication_style_ax(ax):
+def publication_style_ax(ax, fsize=14, ytick_size=10, xtick_size=10):
     """
     Sets the publication style for the given matplotlib Axes object, including setting
         the font to Arial.
@@ -413,9 +507,8 @@ def publication_style_ax(ax):
         None
     """
     for spine in ax.spines.values():
-        spine.set_linewidth(2)
-    ax.tick_params(width=2)
-    fsize = 24
+        spine.set_linewidth(1)
+    ax.tick_params(width=1)
     ax.xaxis.label.set_fontsize(fsize)
     ax.yaxis.label.set_fontsize(fsize)
     ax.tick_params(axis="both", which="major", labelsize=fsize - 2)
@@ -429,6 +522,14 @@ def publication_style_ax(ax):
     # Set font for tick labels
     for label in ax.get_xticklabels() + ax.get_yticklabels():
         label.set_fontname("Arial")
+    for label in ax.get_yticklabels():
+        label.set_fontsize(ytick_size)
+    for label in ax.get_xticklabels():
+        label.set_fontsize(xtick_size)
+    # Set font for all text objects added with ax.text()
+    for text in ax.texts:
+        text.set_fontname("Arial")
+        text.set_fontsize(fsize - 2)
 
 
 def publication_scatter(ax, x, y, **kwargs):

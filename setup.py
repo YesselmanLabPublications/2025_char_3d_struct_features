@@ -32,6 +32,7 @@ setup(
     package_dir={"dms_3d_features": "dms_3d_features"},
     py_modules=[
         "dms_3d_features/process_motifs",
+        "dms_3d_features/pdb_features",
     ],
     include_package_data=True,
     install_requires=requirements,
