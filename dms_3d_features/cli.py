@@ -1,11 +1,25 @@
 import click
 
+from dms_3d_features.pdb_features import (
+    compute_solvent_accessibility_all,
+    calculate_hbond_strength,
+)
 
-def main():
+
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+def get_pdb_features():
     """
-    main function for script
+    Get the solvent accessibility features for all PDB files in the pdbs directory.
     """
+    # df = compute_solvent_accessibility_all("data/pdbs")
+    # df.to_csv("data/pdb-features/sasa.csv", index=False)
+    df = calculate_hbond_strength("data/pdbs")
 
 
 if __name__ == "__main__":
-    main()
+    cli()
