@@ -495,7 +495,7 @@ def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
 # style functions #############################################################
 
 
-def publication_style_ax(ax, fsize=14, ytick_size=10, xtick_size=10):
+def publication_style_ax(ax, fsize=10, ytick_size=8, xtick_size=8):
     """
     Sets the publication style for the given matplotlib Axes object, including setting
         the font to Arial.
