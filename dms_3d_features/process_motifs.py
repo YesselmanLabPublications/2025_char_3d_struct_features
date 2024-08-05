@@ -533,9 +533,10 @@ class GenerateResidueDataFrame:
                     "r_loc_pos": row["r_loc_pos"],
                     "r_pos": row["r_pos"][i],
                     "r_type": row["r_type"],
-                    "r_basepair_type": row["r_basepair_type"],
-                    "r_pdb_nuc_pair": row["r_pdb_nuc_pair"],
                     "pdb_path": row["pdb_path"],
+                    "pdb_r_bp_type": row["pdb_r_bp_type"],
+                    "pdb_r_pair": row["pdb_r_pair"],
+                    "pdb_r_pos": row["pdb_r_pos"],
                 }
                 all_data.append(data)
         df_residues = pd.DataFrame(all_data)
@@ -592,6 +593,10 @@ class GenerateResidueDataFrame:
                     both_pyrimidine = True
                 else:
                     both_pyrimidine = False
+                pdb_r_pos = i + 3
+                break_pos = m_sequence.find("&")
+                if break_pos < i:
+                    pdb_r_pos += 4  # 2 for each of the 2 residues of each strand for the extra 2 basepairs
                 data = {
                     "both_purine": both_purine,
                     "both_pyrimidine": both_pyrimidine,
@@ -621,9 +626,10 @@ class GenerateResidueDataFrame:
                     "r_pos": np.array(row["m_strands"])[:, i].tolist(),
                     "r_std": row["m_data_std"][i],
                     "r_type": r_type,
-                    "r_basepair_type": bp_type,
-                    "r_pdb_nuc_pair": pair,
                     "pdb_path": row["pdbs"],
+                    "pdb_r_bp_type": bp_type,
+                    "pdb_r_pair": pair,
+                    "pdb_r_pos": pdb_r_pos,
                 }
                 all_data.append(data)
         df_residues = pd.DataFrame(all_data)
@@ -781,6 +787,7 @@ def main():
     """
     main function for script
     """
+    regen_data()
     exit()
     generate_stats(df)
     exit()
