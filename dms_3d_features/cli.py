@@ -28,10 +28,10 @@ def get_pdb_features():
     setup_logging()
     # df = compute_solvent_accessibility_all("data/pdbs")
     # df.to_csv("data/pdb-features/sasa.csv", index=False)
-    # df = calculate_hbond_strength("data/pdbs")
+    df = calculate_hbond_strength("data/pdbs")
     # calculate_structural_parameters_with_dssr("data/pdbs")
-    df = get_all_torsional_parameters_from_dssr("data/pdbs")
-    df.to_csv("data/pdb-features/torsions.csv", index=False)
+    # df = get_all_torsional_parameters_from_dssr("data/pdbs")
+    # df.to_csv("data/pdb-features/torsions.csv", index=False)
 
 
 if __name__ == "__main__":
