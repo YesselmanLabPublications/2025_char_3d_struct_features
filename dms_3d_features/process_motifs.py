@@ -502,8 +502,8 @@ class GenerateMotifDataFrame:
 
 # step 3: generate residue dataframes ##############################################
 class GenerateResidueDataFrame:
-    def run(self, df_motif, df_bp):
-        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif, df_bp)
+    def run(self, df_motif):
+        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
         all_data = []
         for _, row in df_residues_avg.iterrows():
             for i in range(len(row["r_data"])):
@@ -545,14 +545,8 @@ class GenerateResidueDataFrame:
             orient="records",
         )
 
-    def __generate_avg_residue_dataframe(self, df_motif, df_bp):
+    def __generate_avg_residue_dataframe(self, df_motif):
         all_data = []
-        bp_dict = {}
-        for k, bp_row in df_bp.iterrows():
-            new_pos = get_resi_pos(bp_row["sequence"], bp_row["pos"])
-            key = (bp_row["sequence"].replace("_", "&"), bp_row["nucleotide"], new_pos)
-            bp_dict[key] = (bp_row["type of pair"], bp_row["pair"])
-
         for _, row in df_motif.iterrows():
             m_sequence = row["m_sequence"]
             m_structure = row["m_structure"]
@@ -627,8 +621,6 @@ class GenerateResidueDataFrame:
                     "r_std": row["m_data_std"][i],
                     "r_type": r_type,
                     "pdb_path": row["pdbs"],
-                    "pdb_r_bp_type": bp_type,
-                    "pdb_r_pair": pair,
                     "pdb_r_pos": pdb_r_pos,
                 }
                 all_data.append(data)
@@ -778,9 +770,8 @@ def regen_data():
     gen = GenerateMotifDataFrame()
     gen.run(df)
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
-    df_bp = pd.read_csv(f"{RESOURCES_PATH}/csvs/basepair_data_for_motifs.csv")
     gen = GenerateResidueDataFrame()
-    gen.run(df, df_bp)
+    gen.run(df)
 
 
 def main():
