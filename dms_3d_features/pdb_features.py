@@ -65,7 +65,7 @@ def compute_solvent_accessibility(
         else:
             continue
         data = {
-            "pdb": pdb_path,
+            "pdb_path": pdb_path,
             "m_sequence": m_sequence,
             "r_nuc": resname[i],
             "pdb_r_pos": resi_number[i],
