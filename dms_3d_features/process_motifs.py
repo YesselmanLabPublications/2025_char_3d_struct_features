@@ -22,6 +22,7 @@ from rna_map.mutation_histogram import (
     convert_dreem_mut_histos_to_mutation_histogram,
 )
 
+from dms_3d_features.logger import get_logger, setup_logging
 from dms_3d_features.plotting import plot_pop_avg_from_row, colors_for_sequence
 
 # assume data/ is location of data
@@ -29,6 +30,8 @@ from dms_3d_features.plotting import plot_pop_avg_from_row, colors_for_sequence
 
 RESOURCES_PATH = "dms_3d_features/resources"
 DATA_PATH = "data"
+
+log = get_logger("process-motifs")
 
 # helper functions ##################################################################
 
@@ -534,12 +537,12 @@ class GenerateResidueDataFrame:
                     "r_pos": row["r_pos"][i],
                     "r_type": row["r_type"],
                     "pdb_path": row["pdb_path"],
-                    "pdb_r_bp_type": row["pdb_r_bp_type"],
-                    "pdb_r_pair": row["pdb_r_pair"],
                     "pdb_r_pos": row["pdb_r_pos"],
                 }
                 all_data.append(data)
         df_residues = pd.DataFrame(all_data)
+        df_residues["ln_r_data"] = np.log(df_residues["r_data"])
+        df_residues["ln_r_data"].replace(-np.inf, -9.8, inplace=True)
         df_residues.to_json(
             f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json",
             orient="records",
@@ -552,10 +555,6 @@ class GenerateResidueDataFrame:
             m_structure = row["m_structure"]
             for i, (e, s) in enumerate(zip(m_sequence, m_structure)):
                 key = (m_sequence, e, i)
-                if key in bp_dict:
-                    bp_type, pair = bp_dict[key]
-                else:
-                    bp_type, pair = "None", "None"
                 if e != "A" and e != "C":
                     continue
                 r_type = "NON-WC"
@@ -630,6 +629,30 @@ class GenerateResidueDataFrame:
             orient="records",
         )
         return df_residues
+
+
+# step 4: merge pdb info into motif and residue dataframes ##########################
+def generate_pdb_residue_dataframe(df_residue):
+    df_pairs = pd.read_csv(
+        f"dms_3d_features/resources/csvs/basepair_data_for_motifs.csv"
+    )
+    df_paths = []
+    for i, row in df_pairs.iterrows():
+        try:
+            path = glob.glob(f"data/pdbs/*/{row['pdb_name']}")[0]
+        except:
+            log.info(f"no pdb found for {row['pdb_name']}")
+            path = ""
+        df_paths.append(path)
+    df_pairs["pdb_path"] = df_paths
+    df_pairs.to_csv("data/pdb-features/pairs.csv", index=False)
+    df_residue = df_residue.query("has_pdbs == True").copy()
+    df_residue["m_sequence"] = df_residue["m_sequence"].apply(
+        lambda x: x.replace("&", "_")
+    )
+    df_residue.drop(["has_pdbs", "pdb_path", "r_nuc", "r_type"], axis=1, inplace=True)
+    df_final = df_pairs.merge(df_residue, on=["m_sequence", "pdb_r_pos"], how="left")
+    return df_final
 
 
 def plot_dms_vs_nomod(df, df_nomod):
@@ -772,12 +795,19 @@ def regen_data():
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
     gen = GenerateResidueDataFrame()
     gen.run(df)
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
+    df = generate_pdb_residue_dataframe(df)
+    df.to_json(
+        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
+        orient="records",
+    )
 
 
 def main():
     """
     main function for script
     """
+    setup_logging()
     regen_data()
     exit()
     generate_stats(df)
