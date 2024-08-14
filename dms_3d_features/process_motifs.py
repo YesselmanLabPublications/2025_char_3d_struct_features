@@ -589,7 +589,7 @@ class GenerateResidueDataFrame:
                 pdb_r_pos = i + 3
                 break_pos = m_sequence.find("&")
                 if break_pos < i:
-                    pdb_r_pos += 4  # 2 for each of the 2 residues of each strand for the extra 2 basepairs
+                    pdb_r_pos += 3  # 2 for each of the 2 residues of each strand for the extra 2 basepairs minus 1 for "&"
                 data = {
                     "both_purine": both_purine,
                     "both_pyrimidine": both_pyrimidine,
@@ -636,6 +636,9 @@ def generate_pdb_residue_dataframe(df_residue):
     df_pairs = pd.read_csv(
         f"dms_3d_features/resources/csvs/basepair_data_for_motifs.csv"
     )
+    df_res = pd.read_csv(f"dms_3d_features/resources/csvs/pdb_res.csv")
+    df_res.drop(["m_sequence"], axis=1, inplace=True)
+    df_res["pdb_name"] = [x + ".pdb" for x in df_res["pdb_name"]]
     df_paths = []
     for i, row in df_pairs.iterrows():
         try:
@@ -645,6 +648,7 @@ def generate_pdb_residue_dataframe(df_residue):
             path = ""
         df_paths.append(path)
     df_pairs["pdb_path"] = df_paths
+    df_pairs = df_pairs.merge(df_res, on="pdb_name")
     df_pairs.to_csv("data/pdb-features/pairs.csv", index=False)
     df_residue = df_residue.query("has_pdbs == True").copy()
     df_residue["m_sequence"] = df_residue["m_sequence"].apply(
@@ -808,6 +812,13 @@ def main():
     main function for script
     """
     setup_logging()
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
+    df = generate_pdb_residue_dataframe(df)
+    df.to_json(
+        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
+        orient="records",
+    )
+    exit()
     regen_data()
     exit()
     generate_stats(df)
