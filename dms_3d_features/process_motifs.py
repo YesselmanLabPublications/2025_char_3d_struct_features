@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sns
-from scipy.stats import ks_2samp, pearsonr, linregress
+from scipy.stats import ks_2samp, pearsonr, linregress, zscore
 
 
 from seq_tools import SequenceStructure, fold, to_rna, has_5p_sequence
@@ -659,6 +659,10 @@ def generate_pdb_residue_dataframe(df_residue):
     return df_final
 
 
+def mark_outliers(df_residues):
+    pass
+
+
 def plot_dms_vs_nomod(df, df_nomod):
     fig, ax = plt.subplots(2, 1, figsize=(10, 5))
     pos = 1000
@@ -813,54 +817,19 @@ def main():
     """
     setup_logging()
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
-    df = generate_pdb_residue_dataframe(df)
-    df.to_json(
-        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
-        orient="records",
-    )
+    df["z_score"] = 0
+    df["r_data_outlier"] = False
+    data = []
+    for i, g in df.groupby(["m_sequence", "r_loc_pos"]):
+        g["z_score"] = zscore(g["r_data"])
+        g["r_data_outlier"] = g["z_score"].abs() > 3
+        data.append(g)
+    df = pd.concat(data)
+    df_outlier = df.query("r_data_outlier == True")
+    print(len(df_outlier))
     exit()
     regen_data()
     exit()
-    generate_stats(df)
-    exit()
-    df_motif = df.query('m_sequence == "AAA&UAU"')
-    print(df_motif["m_orientation"].unique())
-    x, y = 1, 2
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-    df_sub = df_motif.query("m_orientation == 'non-flipped'")
-    plot_motif_boxplot_stripplot(df_sub, ax=axes[0])
-    axes[0].set_title(f"Type: non-flipped")
-    axes[0].set_ylim(0, 0.03)
-    df_sub = df_motif.query("m_orientation == 'flipped'")
-    plot_motif_boxplot_stripplot(df_sub, ax=axes[1])
-    axes[1].set_title(f"Type: flipped")
-    axes[1].set_ylim(0, 0.03)
-    plt.tight_layout()
-    plt.show()
-    exit()
-    df = pd.read_json("data/raw-jsons/pdb_library_1_combined_motifs_res.json")
-    df["ln_r_avg"] = np.log(df["r_avg"])
-    df_a_0x1 = df.query(
-        "(m_token == '0x1' or m_token == '1x0') and nuc == 'A' and r_type == 'NON-WC'"
-    ).copy()
-    df_a_0x1.sort_values("r_avg", ascending=False, inplace=True)
-    sns.violinplot(x="m_sequence", y="ln_r_avg", data=df_a_0x1)
-    plt.xticks(rotation=90)
-    plt.tight_layout()
-    plt.show()
-    exit()
-    df["ln_r_avg"] = np.log(df["r_avg"])
-    df_wc = df.query("r_type == 'WC'")
-    df_non_wc = df.query("r_type == 'NON-WC'")
-    df = pd.read_json("data/raw-jsons/pdb_library_1_combined_motifs_res.json")
-    df_sub = df.query("m_length == 6 and r_type == 'NON-WC'")
-    plt.bar(df_sub["m_sequence"], df_sub["r_avg"])
-    plt.xticks(rotation=90)
-    plt.show()
-    generate_motif_and_residue_dataframe()
-    df = pd.read_json("data/raw-jsons/pdb_library_1_combined_motifs_res.json")
-    df = df.query("has_pdbs == True and (nuc == 'A' or nuc == 'C')")
-    df.to_csv("res_data.csv", index=False)
 
 
 if __name__ == "__main__":
