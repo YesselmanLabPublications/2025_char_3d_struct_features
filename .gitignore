@@ -1,4 +1,5 @@
 data/
 plots/
+notebooks/figures/pngs/
 *.pyc
 .DS_Store
