@@ -341,22 +341,22 @@ def plot_pop_avg_traces_all(df, plot_sequence=False, ylim=None, **kwargs):
     return fig
 
 
-def plot_motif_boxplot_stripplot(df: pd.DataFrame, ax=None) -> plt.Axes:
+def plot_motif_boxplot_stripplot(df, ax=None, show_structure=False) -> plt.axes:
     """
-    Plots a boxplot and stripplot for motif data.
+    plots a boxplot and stripplot for motif data.
 
-    Args:
-        df (pd.DataFrame): The input DataFrame containing the motif data.
-        ax (Optional[plt.Axes]): The matplotlib Axes object to plot on. If not provided, a new figure and Axes will be created.
+    args:
+        df (pd.Dataframe): the input dataframe containing the motif data.
+        ax (optional[plt.axes]): the matplotlib axes object to plot on. if not provided, a new figure and axes will be created.
 
-    Returns:
-        plt.Axes: The matplotlib Axes object containing the plot.
+    returns:
+        plt.axes: the matplotlib axes object containing the plot.
 
-    Raises:
-        None
+    raises:
+        none
 
-    Example:
-        df = pd.DataFrame(...)
+    example:
+        df = pd.dataframe(...)
         ax = plot_motif_boxplot_stripplot(df)
         plt.show()
     """
@@ -371,7 +371,10 @@ def plot_motif_boxplot_stripplot(df: pd.DataFrame, ax=None) -> plt.Axes:
         custom_palette[str(p)] = c
     labels = []
     for n, s in zip(df.iloc[0]["m_sequence"], df.iloc[0]["m_structure"]):
-        labels.append(f"{n}\n{s}")
+        if not show_structure:
+            labels.append(f"{n}")
+        else:
+            labels.append(f"{n}\n{s}")
     sns.boxplot(
         x="r_loc_pos",
         y="r_data",
@@ -379,10 +382,11 @@ def plot_motif_boxplot_stripplot(df: pd.DataFrame, ax=None) -> plt.Axes:
         order=pos,
         palette=custom_palette,
         showfliers=False,
+        linewidth=0.5,
         ax=ax,
     )
     sns.stripplot(
-        x="r_loc_pos", y="r_data", data=df, order=pos, color="black", size=5, ax=ax
+        x="r_loc_pos", y="r_data", data=df, order=pos, color="black", size=1, ax=ax
     )
     ax.set_xticks(ticks=range(len(pos)), labels=labels)
     return ax
@@ -495,38 +499,43 @@ def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
 # style functions #############################################################
 
 
-def publication_style_ax(ax, fsize=10, ytick_size=8, xtick_size=8):
+def publication_style_ax(
+    ax, fsize: int = 10, ytick_size: int = 8, xtick_size: int = 8
+) -> None:
     """
-    Sets the publication style for the given matplotlib Axes object, including setting
-        the font to Arial.
-
+    Applies publication style formatting to the given matplotlib Axes object.
     Args:
-        ax (matplotlib.axes.Axes): The Axes object to apply the publication style to.
-
+        ax (matplotlib.axes.Axes): The Axes object to apply the formatting to.
+        fsize (int, optional): The font size for labels, title, and tick labels. Defaults to 10.
+        ytick_size (int, optional): The font size for y-axis tick labels. Defaults to 8.
+        xtick_size (int, optional): The font size for x-axis tick labels. Defaults to 8.
     Returns:
         None
     """
+    # Set line widths and tick widths
     for spine in ax.spines.values():
-        spine.set_linewidth(1)
-    ax.tick_params(width=1)
+        spine.set_linewidth(0.5)
+    ax.tick_params(width=0.5, size=1.5, pad=1)
+
+    # Set font sizes for labels and title
     ax.xaxis.label.set_fontsize(fsize)
     ax.yaxis.label.set_fontsize(fsize)
-    ax.tick_params(axis="both", which="major", labelsize=fsize - 2)
+    ax.title.set_fontsize(fsize)
 
-    # Set font to Arial for the labels and title
+    # Set font names for labels, title, and tick labels
     ax.xaxis.label.set_fontname("Arial")
     ax.yaxis.label.set_fontname("Arial")
-    ax.title.set_fontsize(fsize)
     ax.title.set_fontname("Arial")
-
-    # Set font for tick labels
     for label in ax.get_xticklabels() + ax.get_yticklabels():
         label.set_fontname("Arial")
+
+    # Set font sizes for tick labels
     for label in ax.get_yticklabels():
         label.set_fontsize(ytick_size)
     for label in ax.get_xticklabels():
         label.set_fontsize(xtick_size)
-    # Set font for all text objects added with ax.text()
+
+    # Set font sizes for text objects added with ax.text()
     for text in ax.texts:
         text.set_fontname("Arial")
         text.set_fontsize(fsize - 2)
