@@ -11,6 +11,7 @@ from sklearn.linear_model import LinearRegression
 from rna_secstruct_design.selection import get_selection, SecStruct
 
 from dms_3d_features.logger import get_logger
+import ast
 
 log = get_logger("plotting")
 
