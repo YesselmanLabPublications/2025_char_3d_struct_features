@@ -16,7 +16,7 @@ import ast
 log = get_logger("plotting")
 
 
-def colors_for_sequence(seq: str) -> list:
+def colors_for_sequence(seq: str) -> List[str]:
     """
     Returns a list of colors corresponding to the input DNA/RNA sequence.
 
@@ -24,25 +24,18 @@ def colors_for_sequence(seq: str) -> list:
     - 'A' -> 'red'
     - 'C' -> 'blue'
     - 'G' -> 'orange'
-    - 'T' -> 'green'
-    - 'U' -> 'green'
+    - 'T' or 'U' -> 'green'
+    - '&' -> 'gray'
 
     Args:
-        seq (str): A string representing a RNA/DNA sequence. The sequence is
-                   expected to contain only the characters 'A', 'C', 'G', 'U', and 'T'.
+        seq (str): A string representing a RNA/DNA sequence.
 
     Returns:
-        list: A list of strings where each element is a color corresponding
-              to a character in the DNA sequence.
+        List[str]: A list of color strings corresponding to each character in the sequence.
 
     Raises:
-        ValueError: If the sequence contains characters other than 'A', 'C',
-                    'G', 'U' and 'T'.
-
-    Example:
-        >>> colors_for_sequence("ACGT")
-        ['red', 'blue', 'orange', 'green']
-
+        TypeError: If the input is not a string.
+        ValueError: If the sequence contains invalid characters.
     """
     color_mapping = {
         "A": "red",
@@ -52,16 +45,17 @@ def colors_for_sequence(seq: str) -> list:
         "U": "green",
         "&": "gray",
     }
+
     colors = []
-    for e in seq:
+    for e in seq.upper():  # Convert to uppercase
         try:
             color = color_mapping[e]
             colors.append(color)
         except KeyError as exc:
             log.error(
-                f"Invalid character {e} in sequence. Sequence must contain only 'A', 'C', 'G', 'U', and 'T'."
+                f"Invalid character '{e}' in sequence. Sequence must contain only 'A', 'C', 'G', 'U', 'T', and '&'."
             )
-            raise ValueError(f"Invalid character {e} in sequence.") from exc
+            raise ValueError(f"Invalid character '{e}' in sequence.") from exc
 
     log.debug(f"Input Sequence: {seq}")
     log.debug(f"Output Colors: {colors}")
@@ -342,118 +336,117 @@ def plot_pop_avg_traces_all(df, plot_sequence=False, ylim=None, **kwargs):
     return fig
 
 
-def plot_motif_boxplot_stripplot(df, ax=None, show_structure=False) -> plt.axes:
+def plot_motif_boxplot_stripplot(
+    df: pd.DataFrame, ax: Optional[plt.Axes] = None, show_structure: bool = False
+) -> plt.Axes:
     """
-    plots a boxplot and stripplot for motif data.
+    Plots a boxplot and stripplot for motif data.
 
-    args:
-        df (pd.Dataframe): the input dataframe containing the motif data.
-        ax (optional[plt.axes]): the matplotlib axes object to plot on. if not provided, a new figure and axes will be created.
+    Args:
+        df (pd.DataFrame): The input dataframe containing the motif data.
+        ax (Optional[plt.Axes]): The matplotlib axes object to plot on. If not provided, a new figure and axes will be created.
+        show_structure (bool): Whether to show the structure information in labels. Defaults to False.
 
-    returns:
-        plt.axes: the matplotlib axes object containing the plot.
+    Returns:
+        plt.Axes: The matplotlib axes object containing the plot.
 
-    raises:
-        none
-
-    example:
-        df = pd.dataframe(...)
-        ax = plot_motif_boxplot_stripplot(df)
-        plt.show()
+    Raises:
+        ValueError: If the required columns are missing in the dataframe.
     """
+    required_columns = ["m_sequence", "m_structure", "r_loc_pos", "r_data"]
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+
     if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+        _, ax = plt.subplots(1, 1, figsize=(10, 5))
+
     sequence = df.iloc[0]["m_sequence"]
     structure = df.iloc[0]["m_structure"]
-    pos = list(range(len(sequence)))
+    positions = list(range(len(sequence)))
     colors = colors_for_sequence(sequence)
-    custom_palette = {}
-    for p, c in zip(pos, colors):
-        custom_palette[str(p)] = c
-    labels = []
-    for n, s in zip(df.iloc[0]["m_sequence"], df.iloc[0]["m_structure"]):
-        if not show_structure:
-            labels.append(f"{n}")
-        else:
-            labels.append(f"{n}\n{s}")
+    custom_palette = dict(zip(positions, colors))
+
+    labels = [f"{n}\n{s}" if show_structure else n for n, s in zip(sequence, structure)]
+
     sns.boxplot(
         x="r_loc_pos",
         y="r_data",
         data=df,
-        order=pos,
+        order=positions,
+        hue="r_loc_pos",
         palette=custom_palette,
         showfliers=False,
         linewidth=0.5,
         ax=ax,
+        legend=False,
     )
     sns.stripplot(
-        x="r_loc_pos", y="r_data", data=df, order=pos, color="black", size=1, ax=ax
+        x="r_loc_pos",
+        y="r_data",
+        data=df,
+        order=positions,
+        color="black",
+        size=1,
+        ax=ax,
     )
-    ax.set_xticks(ticks=range(len(pos)), labels=labels)
+
+    ax.set_xticks(range(len(positions)))
+    ax.set_xticklabels(labels)
+    ax.set_xlabel("Nucleotide", labelpad=2)
+    ax.set_ylabel("Mutation Fraction", labelpad=2)
+
     return ax
 
-def plot_motif_boxplot_stripplot_with_whole_pdb_reactivity(df_sub: pd.DataFrame, ax=None) -> axes:
+
+def plot_motif_boxplot_stripplot_with_whole_pdb_reactivity(
+    df_sub: pd.DataFrame, ax=None
+) -> axes:
     """
     Plots a boxplot with a strip plot overlay for each nucleotide position in a motif, including whole RNA data points.
 
-    This function generates a combined boxplot and strip plot for each nucleotide position in the given motif sequence. 
+    This function generates a combined boxplot and strip plot for each nucleotide position in the given motif sequence.
     It plots the reactivity data (`r_data`) and overlays it with whole RNA DMS data (`dms_whole_rna`).
     The x-axis shows the motif sequence, while the secondary x-axis shows the corresponding secondary structure.
 
     Args:
         df_sub (pd.DataFrame): A DataFrame
-        ax (matplotlib.axes._axes.Axes, optional): An existing matplotlib axis to plot on. 
+        ax (matplotlib.axes._axes.Axes, optional): An existing matplotlib axis to plot on.
             If None, a new axis is created. Defaults to None.
 
     Returns:
         axes: The matplotlib axis object with the plotted data.
     """
     if ax is None:
-        fig, ax1 = plt.subplots(figsize=(7, 7))
-    
-    df_sub['r_data'] = df_sub['r_data'].apply(ast.literal_eval)
-    
+        fig, ax = plt.subplots(figsize=(7, 7))
     x_label = list(df_sub.iloc[0]["m_sequence"])
     struct = list(df_sub.iloc[0]["m_structure"])
-
     for i, (idx, row) in enumerate(df_sub.iterrows()):
         if row["average"] != 0:
             temp_df = pd.DataFrame(
                 {
                     "r_data": row["r_data"],
-                    "nucleotide": [f"{row['nucleotide']} (Row {idx})"] * len(row["r_data"]),
-                    "dms_whole_rna": row["dms_whole_rna"],
+                    "nucleotide": [f"{row['nucleotide']} (Row {idx})"]
+                    * len(row["r_data"]),
+                    "whole_rna_reac": row["whole_rna_reac"],
                 }
             )
-
             x_values = np.full(len(temp_df["r_data"]), i)
-            ax1.boxplot(temp_df["r_data"], patch_artist=True, widths=0.3, positions=[i])
-
-            ax1.scatter(
+            ax.boxplot(temp_df["r_data"], patch_artist=True, widths=0.3, positions=[i])
+            ax.scatter(
                 x_values, temp_df["r_data"], color="black", alpha=0.5, zorder=3, s=5
             )
-            ax1.scatter(
+            ax.scatter(
                 x_values,
-                temp_df["dms_whole_rna"],
+                temp_df["whole_rna_reac"],
                 color="red",
                 alpha=0.5,
                 zorder=3,
                 s=20,
             )
 
-    x_ticks = np.arange(len(x_label))
-    ax1.set_xticks(x_ticks)
-    ax1.set_xticklabels(x_label)
-    
-    ax2 = ax1.twiny()
-    ax2.set_xlim(ax1.get_xlim())
-    ax2.xaxis.set_ticks_position("none")
-    ax2.set_xticks(x_ticks)
-    ax2.set_xticklabels(struct, y=-0.08)
-
-    ax1.xaxis.set_label_coords(0.5, -0.12)
-    plt.tight_layout()
     return ax
+
 
 def plot_motif_boxplot_stripplot_by_m_pos(df):
     x, y = 2, 3
@@ -634,3 +627,22 @@ def publication_line(ax, x, y, **kwargs):
         None
     """
     ax.plot(x, y, markersize=10, lw=2, **kwargs)
+
+
+def format_small_plot(ax):
+    """
+    Formats a small plot with specified style parameters. Plot is expected to have
+    a single subplot and setup like
+
+    ```python
+    fig, ax = plt.subplots(figsize=(1.50, 1.25), dpi=200)
+    ```
+
+    Args:
+        ax: The matplotlib Axes object to format.
+
+    Returns:
+        None
+    """
+    publication_style_ax(ax, fsize=8, ytick_size=6, xtick_size=6)
+    plt.subplots_adjust(left=0.3, bottom=0.21, top=0.98)
