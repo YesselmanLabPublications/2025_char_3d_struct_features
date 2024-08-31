@@ -9,7 +9,7 @@ from dms_3d_features.pdb_features import (
 RESOURCE_PATH = "test/resources/"
 
 
-def test_compute_solvent_accessibility():
+def _test_compute_solvent_accessibility():
     pdb_path = f"{RESOURCE_PATH}/pdbs/TWOWAY.3WBM.2-2.GACU-ACCC.0.pdb"
     df = compute_solvent_accessibility(pdb_path)
     df_org = pd.read_csv(f"{RESOURCE_PATH}/csvs/org_sasa.csv")

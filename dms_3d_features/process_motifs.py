@@ -12,7 +12,6 @@ from scipy.stats import ks_2samp, pearsonr, linregress, zscore
 
 
 from seq_tools import SequenceStructure, fold, to_rna, has_5p_sequence
-from seq_tools import trim as seq_ss_trim
 from seq_tools.structure import find as seq_ss_find
 from rna_secstruct import SecStruct
 
@@ -55,29 +54,28 @@ def trim(df: pd.DataFrame, start: int, end: int) -> pd.DataFrame:
 
     Returns:
         pd.DataFrame: A trimmed DataFrame with the 'sequence', 'structure', and 'data' columns adjusted to the specified indices.
-
-    Example:
-        >>> df = pd.DataFrame({
-        ...     "sequence": ["ABCDEFG", "HIJKLMN", "OPQRSTU"],
-        ...     "structure": ["1234567", "2345678", "3456789"],
-        ...     "data": [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]]
-        ... })
-        >>> trimmed_df = trim(df, 1, 2)
-        >>> print(trimmed_df)
-          sequence structure         data
-        0     BCDEF    23456     [2, 3, 4]
-        1     IJKLM    34567     [7, 8, 9]
-        2     PQRST    45678  [12, 13, 14]
     """
-    df = seq_ss_trim(df, start, end)
-    if start == 0 and end != 0:
-        df["data"] = df["data"].apply(lambda x: x[:-end])
-    elif end == 0 and start != 0:
-        df["data"] = df["data"].apply(lambda x: x[start:])
-    elif start == 0 and end == 0:
-        df["data"] = df["data"].apply(lambda x: x)
-    else:
-        df["data"] = df["data"].apply(lambda x: x[start:-end])
+
+    def trim_column(column, start, end):
+        if start == 0 and end == 0:
+            return column
+        if end == 0:
+            return column.str[start:]
+        elif start == 0:
+            return column.str[:-end]
+        else:
+            return column.str[start:-end]
+
+    df = df.copy()
+    for col in ["sequence", "structure", "data"]:
+        if col in df.columns:
+            if col == "data":
+                df[col] = df[col].apply(
+                    lambda x: x[start:-end] if end != 0 else x[start:]
+                )
+            else:
+                df[col] = trim_column(df[col], start, end)
+
     return df
 
 
