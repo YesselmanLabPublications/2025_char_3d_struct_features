@@ -96,14 +96,6 @@ def trim_p5_and_p3(df: pd.DataFrame, is_rna=True) -> pd.DataFrame:
     Raises:
         ValueError: If no common p5 sequence is found or the sequence is not registered in the CSV file.
 
-    Example:
-        >>> df = pd.DataFrame({"data": ["GGAAGATCGAGTAGATCAAAGCATGC", "GGAAGATCGAGTAGATCAAAGCATGC", "GGAAGATCGAGTAGATCAAAGCATGC"]})
-        >>> trimmed_df = trim_p5_and_p3(df)
-        >>> print(trimmed_df)
-           data
-        0  GCATGCAT
-        1  GCATGCAT
-        2  GCATGCAT
     """
     df_p5 = pd.read_csv(f"{RESOURCES_PATH}/csvs/p5_sequences.csv")
     if is_rna:
@@ -114,7 +106,7 @@ def trim_p5_and_p3(df: pd.DataFrame, is_rna=True) -> pd.DataFrame:
             common_p5_seq = p5_seq
     if len(common_p5_seq) == 0:
         raise ValueError("No common p5 sequence found")
-    # log.info(f"common p5 sequence: {common_p5_seq}")
+    log.debug(f"common p5 sequence: {common_p5_seq}")
     return trim(df, len(common_p5_seq), 20)
 
 
@@ -132,16 +124,6 @@ def split_dataframe(df: pd.DataFrame, n: int) -> List[pd.DataFrame]:
     Raises:
         None.
 
-    Example:
-        >>> df = pd.DataFrame({'A': [1, 2, 3, 4, 5], 'B': [6, 7, 8, 9, 10]})
-        >>> split_dataframe(df, 2)
-        [   A  B
-         0  1  6
-         1  2  7
-         2  3  8,
-           A   B
-         3  4   9
-         4  5  10]
     """
     chunk_size = len(df) // n
     chunks = [df.iloc[i * chunk_size : (i + 1) * chunk_size] for i in range(n)]
@@ -223,9 +205,17 @@ def find_max_nomod_mutations():
 
 
 # step 1: convert raw pickled mutation histograms to dataframe json files ##########
-def convert_mut_histos_to_df():
+def process_mutation_histograms_to_json():
     """
-    Converts mutation histograms to a DataFrame and saves the results as JSON files.
+    Processes mutation histograms from pickle files, converts them to DataFrames,
+    and saves the results as JSON files.
+
+    This function performs the following steps:
+    1. Reads mutation histograms from pickle files
+    2. Converts them to a standardized format
+    3. Creates a DataFrame with relevant columns
+    4. Processes the data (RNA conversion, folding, trimming)
+    5. Saves the results as JSON files
 
     Returns:
         None
@@ -245,28 +235,34 @@ def convert_mut_histos_to_df():
         "3_mut",
         "3plus_mut",
     ]
-    n = 10
+    n_workers = 10
+
     for pfile in pickle_files:
-        name = pfile.split("/")[-1].split(".")[0]
-        print(name)
-        if os.path.isfile(f"data/raw-jsons/{name}.json"):
+        name = os.path.splitext(os.path.basename(pfile))[0]
+        output_file = f"data/raw-jsons/constructs/{name}.json"
+
+        if os.path.isfile(output_file):
+            log.info(f"Skipping {name}: Output file already exists")
             continue
+
+        log.info(f"Processing {name}")
+
         mut_histos = get_mut_histos_from_pickle_file(pfile)
         mut_histos = convert_dreem_mut_histos_to_mutation_histogram(mut_histos)
         df_results = get_dataframe(mut_histos, cols)
-        df_results.rename(columns={"pop_avg": "data"}, inplace=True)
+        df_results = df_results.rename(columns={"pop_avg": "data"})
         df_results = to_rna(df_results)
-        df_chunks = split_dataframe(df_results, n)
-        results = []
-        with ThreadPoolExecutor(max_workers=n) as executor:
-            futures = {executor.submit(fold, chunk): chunk for chunk in df_chunks}
-            for future in as_completed(futures):
-                result = future.result()
-                results.append(result)
-        # Combine the results into a single DataFrame
+
+        df_chunks = split_dataframe(df_results, n_workers)
+
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            results = list(executor.map(fold, df_chunks))
+
         final_result = pd.concat(results)
         final_result = trim_p5_and_p3(final_result)
-        final_result.to_json(f"data/raw-jsons/constructs/{name}.json", orient="records")
+        final_result.to_json(output_file, orient="records")
+
+    log.info("Mutation histogram processing and JSON conversion completed successfully")
 
 
 # step 2: generate motif dataframes ################################################
@@ -661,102 +657,6 @@ def mark_outliers(df_residues):
     pass
 
 
-def plot_dms_vs_nomod(df, df_nomod):
-    fig, ax = plt.subplots(2, 1, figsize=(10, 5))
-    pos = 1000
-    plot_pop_avg_from_row(df.iloc[pos], ax=ax[0])
-    plot_pop_avg_from_row(df_nomod.iloc[pos], ax=ax[1])
-    ax[0].set_ylim(0, 0.08)
-    ax[1].set_ylim(0, 0.08)
-    plt.show()
-
-
-def plot_1x1(df):
-    df["ln_r_avg"] = np.log(df["r_avg"])
-    df_non_wc = df.query("r_type == 'NON-WC'")
-    df_wc = df.query("r_type == 'WC'")
-    avg_non_wc = df.query("r_type == 'NON-WC'")["ln_r_avg"].mean()
-    avg_wc = df.query("r_type == 'WC'")["ln_r_avg"].mean()
-    df_ac = df.query(
-        "m_token == '1x1' and (likely_pair == 'AC' or likely_pair == 'CA')"
-    ).copy()
-    df_ac["r_type"] = "AC"
-    df_ga = df.query(
-        "m_token == '1x1' and (likely_pair == 'GA' or likely_pair == 'AG')"
-    ).copy()
-    df_ga["r_type"] = "GA"
-    df_aa = df.query(
-        "m_token == '1x1' and (likely_pair == 'AA' or likely_pair == 'AA')"
-    ).copy()
-    df_aa["r_type"] = "AA"
-    df_cc = df.query(
-        "m_token == '1x1' and (likely_pair == 'CC' or likely_pair == 'CC')"
-    ).copy()
-    df_cc["r_type"] = "CC"
-    df_cu = df.query(
-        "m_token == '1x1' and (likely_pair == 'CU' or likely_pair == 'UC')"
-    ).copy()
-    df_cu["r_type"] = "CC"
-    dfs = [df_wc, df_non_wc, df_ac, df_ga, df_aa, df_cc, df_cu]
-    df = pd.concat(dfs)
-    data = []
-    seen = []
-    for df1, df2 in itertools.product([df_wc, df_non_wc], dfs):
-        key1 = df1.iloc[0]["r_type"] + "-" + df2.iloc[0]["r_type"]
-        key2 = df2.iloc[0]["r_type"] + "-" + df1.iloc[0]["r_type"]
-        if key1 in seen or key2 in seen:
-            continue
-        ks, p_value = ks_2samp(df1["ln_r_avg"], df2["ln_r_avg"])
-        data.append([df1.iloc[0]["r_type"], df2.iloc[0]["r_type"], ks, p_value])
-        seen.append(key1)
-        seen.append(key2)
-    df_stat = pd.DataFrame(data, columns=["r_type1", "r_type2", "ks", "p_value"])
-    print(df_stat)
-    exit()
-
-    sns.violinplot(x="r_type", y="ln_r_avg", data=df)
-    x1, x2 = 0, 1
-    plt.plot([x1, len(dfs)], [avg_wc, avg_wc], color="red", linewidth=2, linestyle="--")
-    plt.plot(
-        [x2, len(dfs)],
-        [avg_non_wc, avg_non_wc],
-        color="red",
-        linewidth=2,
-        linestyle="--",
-    )
-
-    plt.show()
-
-
-def plot_ac_vs_size(df):
-    # plot_1x1(df)
-    df_ac_1x1 = df.query(
-        "m_token == '1x1' and (likely_pair == 'AC' or likely_pair == 'CA')"
-    ).copy()
-    df_ac_2x2 = df.query(
-        "m_token == '2x2' and (likely_pair == 'AC' or likely_pair == 'CA')"
-    ).copy()
-    df_ac_3x3 = df.query(
-        "m_token == '3x3' and (likely_pair == 'AC' or likely_pair == 'CA')"
-    ).copy()
-    df_ac_4x4 = df.query(
-        "m_token == '4x4' and (likely_pair == 'AC' or likely_pair == 'CA')"
-    ).copy()
-    dfs = [df_ac_1x1, df_ac_2x2, df_ac_3x3, df_ac_4x4]
-    df_ac_1x1 = df_ac_1x1[
-        ["m_sequence", "m_structure", "nuc", "r_avg", "r_pos", "pdb_path"]
-    ]
-    df_ac_1x1.sort_values("r_avg", ascending=False, inplace=True)
-    df_ac_1x1.to_csv("ac_1x1.csv", index=False)
-    df_ac_4x4 = df_ac_4x4[
-        ["m_sequence", "m_structure", "nuc", "r_avg", "r_pos", "pdb_path"]
-    ]
-    df_ac_4x4.to_csv("ac_4x4.csv", index=False)
-    df = pd.concat(dfs)
-    sns.violinplot(x="m_token", y="ln_r_avg", data=df)
-    plt.show()
-
-
 def generate_stats(df):
     all_data = []
     for [m_sequence, r_loc_pos], g in df.groupby(["m_sequence", "r_loc_pos"]):
@@ -814,6 +714,8 @@ def main():
     main function for script
     """
     setup_logging()
+    process_mutation_histograms_to_json()
+    exit()
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
     df["z_score"] = 0
     df["r_data_outlier"] = False
