@@ -39,7 +39,7 @@ def setup_logging(file_name: str = None) -> logging.Logger:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)  # Set the desired level for console output
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        "%(levelname)s - %(name)s - %(funcName)s - %(message)s"
     )
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
@@ -51,40 +51,6 @@ def setup_logging(file_name: str = None) -> logging.Logger:
         root_logger.addHandler(fh)
 
     return root_logger
-
-
-def setup_applevel_logger(
-    logger_name: str = APP_LOGGER_NAME, is_debug: bool = False, file_name: str = None
-) -> logging.Logger:
-    """
-    Set up and configure an application-level logger.
-
-    Args:
-        logger_name (str, optional): The name of the logger. Defaults to APP_LOGGER_NAME.
-        is_debug (bool, optional): Flag indicating whether to enable debug level logging.
-        Defaults to False.
-        file_name (str, optional): The name of the log file. Defaults to None.
-
-    Returns:
-        logging.Logger: The configured logger instance.
-    """
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
-
-    formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
-
-    # pylint: disable=C0103
-    sh = logging.StreamHandler(sys.stdout)
-    sh.setFormatter(formatter)
-    logger.addHandler(sh)
-
-    if file_name:
-        # pylint: disable=C0103
-        fh = logging.FileHandler(file_name)
-        fh.setFormatter(formatter)
-        logger.addHandler(fh)
-
-    return logger
 
 
 def get_logger(module_name: str = "") -> logging.Logger:
