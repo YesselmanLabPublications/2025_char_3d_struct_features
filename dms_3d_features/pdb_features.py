@@ -21,59 +21,61 @@ def compute_solvent_accessibility(
     pdb_path: str, probe_radius: float = 2.0
 ) -> pd.DataFrame:
     """
-    Computes the solvent accessibility of atoms in a protein structure.
+    Computes the solvent accessibility of specific atoms in a nucleic acid structure.
 
     Args:
-        pdb_path: The path to the PDB file.
+        pdb_path (str): The path to the PDB file.
+        probe_radius (float): The probe radius for SASA calculation. Defaults to 2.0.
 
     Returns:
-        A pandas DataFrame containing the solvent accessibility information for each atom.
+        pd.DataFrame: A DataFrame containing the solvent accessibility information for
+          N1 atoms of A and N3 atoms of C.
 
     Raises:
         FileNotFoundError: If the PDB file specified by pdb_path does not exist.
     """
-    ppdb = PandasPdb.PandasPdb()
-    ppdb.read_pdb(pdb_path)
+    try:
+        ppdb = PandasPdb.PandasPdb().read_pdb(pdb_path)
+    except FileNotFoundError:
+        log.error(f"PDB file not found: {pdb_path}")
+        raise
+
     ATOM = ppdb.df["ATOM"]
-    resname = ATOM["residue_name"]
-    atom = ATOM["atom_name"]
-    resi_number = ATOM["residue_number"]
-    length = len(ATOM.index)
+
+    # Filter for N1 atoms of A and N3 atoms of C
+    mask = ((ATOM["residue_name"] == "A") & (ATOM["atom_name"] == "N1")) | (
+        (ATOM["residue_name"] == "C") & (ATOM["atom_name"] == "N3")
+    )
+    filtered_ATOM = ATOM[mask]
+
     params = freesasa.Parameters(
         {"algorithm": freesasa.LeeRichards, "probe-radius": probe_radius}
     )
     structure = freesasa.Structure(pdb_path)
     result = freesasa.calc(structure, params)
-    m_sequence = pdb_path.split("/")[-2].replace("_", "&")
+
+    m_sequence = os.path.basename(os.path.dirname(pdb_path)).replace("_", "&")
+
     all_data = []
-    for i in range(length):
-        sasa = 0.0
-        if atom[i] != "N1":
-            continue
+    for _, row in filtered_ATOM.iterrows():
         selection = freesasa.selectArea(
             (
-                f"n1,(name N1) and (resn A) and (resi {resi_number[i]}) ",
-                f"n3, (name N3) and (resn C) and (resi {resi_number[i]})",
+                f"atom, (name {row['atom_name']}) and (resn {row['residue_name']}) and (resi {row['residue_number']})"
             ),
             structure,
             result,
         )
-        if resname[i] == "A":
-            sasa = selection["n1"]
-        elif resname[i] == "C":
-            sasa = selection["n3"]
-        else:
-            continue
+
         data = {
             "pdb_path": pdb_path,
             "m_sequence": m_sequence,
-            "r_nuc": resname[i],
-            "pdb_r_pos": resi_number[i],
-            "sasa": sasa,
+            "r_nuc": row["residue_name"],
+            "pdb_r_pos": row["residue_number"],
+            "sasa": selection["atom"],
         }
         all_data.append(data)
-    df = pd.DataFrame(all_data)
-    return df
+
+    return pd.DataFrame(all_data)
 
 
 def compute_solvent_accessibility_all(
@@ -98,53 +100,189 @@ def compute_solvent_accessibility_all(
     pdb_paths = glob.glob(f"{pdb_dir}/*/*.pdb")
     dfs = []
     for pdb_path in pdb_paths:
-        df = compute_solvent_accessibility(pdb_path, probe_radius)
-        dfs.append(df)
-    df = pd.concat(dfs)
+        try:
+            df = compute_solvent_accessibility(pdb_path, probe_radius)
+            dfs.append(df)
+        except Exception as e:
+            log.error(f"Error processing {pdb_path}: {str(e)}")
+
+    if not dfs:
+        log.warning("No PDB files were successfully processed.")
+        return pd.DataFrame()
+
+    df = pd.concat(dfs, ignore_index=True)
+    log.info(f"Processed {len(dfs)} PDB files successfully.")
     return df
 
 
 # hydrogen bonds #####################################################################
 
 
-def generate_hbond_output_file_from_dssr(pdb_path: str) -> None:
-    """
-    Run x3dna-dssr to extract H-bonds from a model PDB file.
+class HbondCalculator:
+    def __init__(self):
+        self.angle_atom_pair = {
+            "N1": "C2",
+            "N3": "C2",
+            "N6": "C6",
+            "N7": "C5",
+            "N9": "C4",
+            "O2": "C2",
+            "N4": "C4",
+            "N2": "C2",
+            "O6": "C6",
+            "O4": "C4",
+            "O2'": "C2'",
+            "O3'": "C3'",
+            "O4'": "C4'",
+            "O5'": "C5'",
+            "OP1": "O5'",
+        }
+        self.strength_factors = {"O:O": 21, "N:N": 13, "N:O": 8}
 
-    Args:
-        pdb_path (str): The path to the model PDB file.
+    def calculate_hbond_strength(self, pdb_dir: str) -> pd.DataFrame:
+        """
+        Main function to calculate hydrogen bond strength for all PDB files in a directory.
 
-    Returns:
-        None
+        Args:
+            pdb_dir (str): Directory containing PDB files.
 
-    Example:
-        >>> generate_hbond_output_file_from_dssr('/path/to/model.pdb')
-    """
-    pdb_path_name = os.path.basename(pdb_path)
-    output_file = f"data/dssr-output/{pdb_path_name}_hbond.txt"
-    command_dssr = f"x3dna-dssr -i={pdb_path} --get-hbonds -o={output_file}"
-    subprocess.call(command_dssr, shell=True)
-    try:
-        os.remove("dssr-*")
-    except:
-        pass
+        Returns:
+            pd.DataFrame: DataFrame containing hydrogen bond strength data.
+        """
+        all_data = []
+        pdb_files = glob.glob(f"{pdb_dir}/*/*.pdb")
 
+        for pdb in pdb_files:
+            motif = os.path.basename(os.path.dirname(pdb))
+            pdb_name = os.path.basename(pdb)
+            df_hbonds = self.__extract_hbond_length(pdb)
+            atom_df = PandasPdb().read_pdb(pdb).df["ATOM"]
 
-def load_hbonds_file(file_path: str) -> pd.DataFrame:
-    """
-    Read the H-bonds file into a DataFrame.
+            pos_data = self.__get_position_data(motif)
+            hbond_data = self.__process_hbonds(df_hbonds, atom_df, pos_data, pdb_name)
+            all_data.extend(hbond_data)
 
-    Args:
-        file_path (str): The path to the H-bonds file.
+        return pd.DataFrame(all_data)
 
-    Returns:
-        pd.DataFrame: The DataFrame containing H-bonds data.
-    """
-    return pd.read_csv(
-        file_path,
-        skiprows=2,
-        delimiter="\s+",
-        names=[
+    def __get_position_data(self, motif):
+        a_pos1, a_pos2, c_pos1, c_pos2 = self.__find_positions_of_a_and_cs(motif)
+        pos1 = a_pos1 + a_pos2 + c_pos1 + c_pos2
+        a_pos = self.__multiply_list(a_pos1, "A") + self.__multiply_list(a_pos2, "A")
+        c_pos = self.__multiply_list(c_pos1, "C") + self.__multiply_list(c_pos2, "C")
+        pos = a_pos + c_pos
+
+        var_holder = {f"n{n}": l for n, l in zip(pos1, pos)}
+        var_holder.update(
+            {f"a{n}": "N1" if l[0] == "A" else "N3" for n, l in zip(pos1, pos)}
+        )
+
+        return {
+            "n1": var_holder[f"n{pos1[-1]}"],
+            "at1": var_holder[f"a{pos1[-1]}"],
+            "var_holder": var_holder,
+        }
+
+    def __process_hbonds(self, df_hbonds, atom_df, pos_data, pdb_name):
+        hbond_data = []
+        for _, row in df_hbonds.iterrows():
+            if row["distance"] >= 3.3 or row["type"] != "p":
+                continue
+
+            pos_1, pos_2 = row["atom_1"].split("@")[1], row["atom_2"].split("@")[1]
+            num_1, num_2 = int(pos_1[1:]), int(pos_2[1:])
+            ps_1, ps_2 = row["atom_1"].split("@")[0], row["atom_2"].split("@")[0]
+
+            if pos_1 != f"{pos_data['n1']}" and pos_2 != f"{pos_data['n1']}":
+                continue
+
+            if ps_1 not in self.angle_atom_pair or ps_2 not in self.angle_atom_pair:
+                continue
+
+            coords = self.__get_atom_coordinates(atom_df, ps_1, ps_2, num_1, num_2)
+
+            if any(coord.empty for coord in coords.values()):
+                continue
+
+            angle_1_degrees, angle_2_degrees = self.__calculate_angles(coords)
+            strength = self.__calculate_strength(row["distance"], row["hbond_atoms"])
+
+            hbond_data.append(
+                self.__create_hbond_data(
+                    row,
+                    pos_data,
+                    pdb_name,
+                    pos_1,
+                    pos_2,
+                    angle_1_degrees,
+                    angle_2_degrees,
+                    strength,
+                )
+            )
+            break
+
+        return hbond_data
+
+    def __create_hbond_data(
+        self,
+        row,
+        pos_data,
+        pdb_name,
+        pos_1,
+        pos_2,
+        angle_1_degrees,
+        angle_2_degrees,
+        strength,
+    ):
+        return {
+            "motif": os.path.dirname(pdb_name),
+            "hbond_length": row["distance"],
+            "name": pdb_name,
+            "atom_1": row["atom_1"],
+            "atom_2": row["atom_2"],
+            "type": row["type"],
+            "angle_1": angle_1_degrees,
+            "angle_2": angle_2_degrees,
+            "nuc_1": pos_1,
+            "nuc_2": pos_2,
+            "n_or_other": (
+                "N-included"
+                if row["atom_1"].split("@")[0] == f"{pos_data['at1']}"
+                or row["atom_2"].split("@")[0] == f"{pos_data['at1']}"
+                else "Other"
+            ),
+            "hbond_atoms": row["hbond_atoms"],
+            "hbond_strength": strength,
+        }
+
+    def __generate_hbond_output_file_from_dssr(self, pdb_path: str) -> str:
+        pdb_filename = os.path.basename(pdb_path)
+        output_file = f"data/dssr-output/{pdb_filename}_hbond.txt"
+
+        try:
+            subprocess.run(
+                ["x3dna-dssr", f"-i={pdb_path}", "--get-hbonds", f"-o={output_file}"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Error running x3dna-dssr: {e.stderr}")
+
+        try:
+            for file in glob.glob("dssr-*"):
+                os.remove(file)
+        except OSError as e:
+            log.error(f"Warning: Failed to remove temporary files: {e}")
+
+        if not os.path.exists(output_file):
+            raise FileNotFoundError(
+                f"Expected output file not generated: {output_file}"
+            )
+
+        return output_file
+
+    def __load_hbonds_file(self, file_path: str) -> pd.DataFrame:
+        column_names = [
             "position_1",
             "position_2",
             "hbond_num",
@@ -153,202 +291,73 @@ def load_hbonds_file(file_path: str) -> pd.DataFrame:
             "hbond_atoms",
             "atom_1",
             "atom_2",
-        ],
-    )
+        ]
+        return pd.read_csv(
+            file_path, skiprows=2, delim_whitespace=True, names=column_names
+        )
 
+    def __extract_hbond_length(self, pdb_path: str) -> pd.DataFrame:
+        self.__generate_hbond_output_file_from_dssr(pdb_path)
+        txt_file = os.path.basename(pdb_path)
+        return self.__load_hbonds_file(f"data/dssr-output/{txt_file[:-4]}_hbonds.txt")
 
-def extract_hbond_length(pdb_path: str) -> pd.DataFrame:
-    """
-    Calculates the length of hydrogen bonds in a PDB file.
+    @staticmethod
+    def __multiply_list(lst: list, char: str) -> list:
+        return [f"{char}{elem}" for elem in lst]
 
-    Args:
-        motif (str): Folder name where the pdb is (also the motif).
+    @staticmethod
+    def __find_positions_of_a_and_cs(motif: str) -> tuple:
+        motif1, motif2 = motif.split("_")
+        a_pos1 = [pos + 3 for pos, char in enumerate(motif1) if char == "A"]
+        a_pos2 = [
+            pos + 7 + len(motif1) for pos, char in enumerate(motif2) if char == "A"
+        ]
+        c_pos1 = [pos + 3 for pos, char in enumerate(motif1) if char == "C"]
+        c_pos2 = [
+            pos + 7 + len(motif1) for pos, char in enumerate(motif2) if char == "C"
+        ]
+        return a_pos1, a_pos2, c_pos1, c_pos2
 
-    Returns:
-        pd.DataFrame: A DataFrame containing the lengths of hydrogen bonds.
-                      The DataFrame has the following columns:
-                      - Column 1: Atom 1
-                      - Column 2: Atom 2
-                      - Column 3: Hydrogen bond length
+    def __get_atom_coordinates(self, atom_df, ps_1, ps_2, num_1, num_2):
+        return {
+            "coords_11": atom_df[
+                (atom_df["atom_name"] == ps_1) & (atom_df["residue_number"] == num_1)
+            ],
+            "coords_12": atom_df[
+                (atom_df["atom_name"] == self.angle_atom_pair[ps_1])
+                & (atom_df["residue_number"] == num_1)
+            ],
+            "coords_21": atom_df[
+                (atom_df["atom_name"] == ps_2) & (atom_df["residue_number"] == num_2)
+            ],
+            "coords_22": atom_df[
+                (atom_df["atom_name"] == self.angle_atom_pair[ps_2])
+                & (atom_df["residue_number"] == num_2)
+            ],
+        }
 
-    Example:
-        >>> pdb_path = "/path/to/pdb/file.pdb"
-        >>> calculate_hbond_length(pdb_path)
-        Returns a DataFrame with the hydrogen bond lengths.
-    """
-    generate_hbond_output_file_from_dssr(pdb_path)
-    txt_file = os.path.basename(pdb_path)
-    return load_hbonds_file(f"data/dssr-output/{txt_file[:-4]}_hbonds.txt")
+    @staticmethod
+    def __calculate_angles(coords):
+        a1, a2, b1, b2 = [
+            coord[["x_coord", "y_coord", "z_coord"]].values[0]
+            for coord in coords.values()
+        ]
+        angle_1_degrees = np.degrees(
+            np.arccos(
+                np.dot(a2 - a1, b1 - a1)
+                / (np.linalg.norm(a2 - a1) * np.linalg.norm(b1 - a1))
+            )
+        )
+        angle_2_degrees = np.degrees(
+            np.arccos(
+                np.dot(b2 - b1, a1 - b1)
+                / (np.linalg.norm(b2 - b1) * np.linalg.norm(a1 - b1))
+            )
+        )
+        return angle_1_degrees, angle_2_degrees
 
-
-def multiply_list(lst: list, char: str) -> list:
-    """
-    Generate a list of pairs from the list and character.
-
-    Args:
-        lst (list): The list of positions.
-        char (str): The character to pair with each position.
-
-    Returns:
-        list: A list of pairs where each pair contains the character and a position.
-    """
-    return [char + str(elem) for elem in lst]
-
-
-def find_positions_of_a_and_cs(motif: str) -> tuple:
-    """
-    Parse the motif and return positions for A and C nucleotides.
-
-    Args:
-        motif (str): The motif string in the format "motif1_motif2".
-
-    Returns:
-        tuple: Four lists containing positions of A and C nucleotides in both motifs.
-    """
-    motif1, motif2 = motif.split("_")
-    a_pos1 = [(pos + 3) for pos, char in enumerate(motif1) if char == "A"]
-    a_pos2 = [(pos + 7 + len(motif1)) for pos, char in enumerate(motif2) if char == "A"]
-    c_pos1 = [(pos + 3) for pos, char in enumerate(motif1) if char == "C"]
-    c_pos2 = [(pos + 7 + len(motif1)) for pos, char in enumerate(motif2) if char == "C"]
-    return a_pos1, a_pos2, c_pos1, c_pos2
-
-
-def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
-    """
-    Calculate the strength of H-bonds for the specified PDB file and motif.
-
-    Args:
-        pdb_dir (str): The path to the directory containing the PDB files.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing H-bond strength data.
-    """
-    var_holder = {}
-    all_data = []
-    angle_atom_pair = {
-        "N1": "C2",
-        "N3": "C2",
-        "N6": "C6",
-        "N7": "C5",
-        "N9": "C4",
-        "O2": "C2",
-        "N4": "C4",
-        "N2": "C2",
-        "O6": "C6",
-        "O4": "C4",
-        "O2'": "C2'",
-        "O3'": "C3'",
-        "O4'": "C4'",
-        "O5'": "C5'",
-        "OP1": "O5'",
-    }
-    pdb_files = glob.glob(f"{pdb_dir}/*/*.pdb")
-
-    for pdb in pdb_files:
-        motif = pdb.split("/")[-2]
-        a_pos1, a_pos2, c_pos1, c_pos2 = find_positions_of_a_and_cs(motif)
-        pos1 = a_pos1 + a_pos2 + c_pos1 + c_pos2
-        a_pos = multiply_list(a_pos1, "A") + multiply_list(a_pos2, "A")
-        c_pos = multiply_list(c_pos1, "C") + multiply_list(c_pos2, "C")
-        pos = a_pos + c_pos
-
-        for n, l in zip(pos1, pos):
-            var_holder[f"n{n}"] = l
-            var_holder[f"a{n}"] = "N1" if l[0] == "A" else "N3"
-
-        n1 = var_holder[f"n{n}"]
-        at1 = var_holder[f"a{n}"]
-
-        pdb_name = os.path.basename(pdb)
-        df_fn = extract_hbond_length(motif)
-        ppdb = PandasPdb().read_pdb(pdb)
-        ATOM = ppdb.df["ATOM"]
-
-        for _, row in df_fn.iterrows():
-            if not (row["distance"] < 3.3 and row["type"] == "p"):
-                continue
-
-            pos_1 = row["atom_1"].split("@")[1]
-            pos_2 = row["atom_2"].split("@")[1]
-            num_1 = int(pos_1[1:])
-            num_2 = int(pos_2[1:])
-            ps_1 = row["atom_1"].split("@")[0]
-            ps_2 = row["atom_2"].split("@")[0]
-
-            if pos_1 == f"{n1}" or pos_2 == f"{n1}":
-                if not (ps_1 in angle_atom_pair and ps_2 in angle_atom_pair):
-                    continue
-                coords_11 = ATOM[
-                    (ATOM["atom_name"] == ps_1) & (ATOM["residue_number"] == num_1)
-                ]
-                coords_12 = ATOM[
-                    (ATOM["atom_name"] == angle_atom_pair[ps_1])
-                    & (ATOM["residue_number"] == num_1)
-                ]
-                coords_21 = ATOM[
-                    (ATOM["atom_name"] == ps_2) & (ATOM["residue_number"] == num_2)
-                ]
-                coords_22 = ATOM[
-                    (ATOM["atom_name"] == angle_atom_pair[ps_2])
-                    & (ATOM["residue_number"] == num_2)
-                ]
-                if (
-                    coords_11.empty
-                    or coords_12.empty
-                    or coords_21.empty
-                    or coords_22.empty
-                ):
-                    continue
-                a1 = coords_11[["x_coord", "y_coord", "z_coord"]].values[0]
-                a2 = coords_12[["x_coord", "y_coord", "z_coord"]].values[0]
-                b1 = coords_21[["x_coord", "y_coord", "z_coord"]].values[0]
-                b2 = coords_22[["x_coord", "y_coord", "z_coord"]].values[0]
-                a1a2 = a2 - a1
-                a1b1 = b1 - a1
-                angle_1_radian = np.arccos(
-                    np.dot(a1a2, a1b1) / (np.linalg.norm(a1a2) * np.linalg.norm(a1b1))
-                )
-                angle_1_degrees = math.degrees(angle_1_radian)
-                b1b2 = b2 - b1
-                b1a1 = a1 - b1
-                angle_2_radian = np.arccos(
-                    np.dot(b1b2, b1a1) / (np.linalg.norm(b1b2) * np.linalg.norm(b1a1))
-                )
-                angle_2_degrees = math.degrees(angle_2_radian)
-
-                if row["hbond_atoms"] == "O:O":
-                    strength = (2.2 / row["distance"]) * 21
-                elif row["hbond_atoms"] == "N:N":
-                    strength = (2.2 / row["distance"]) * 13
-                elif row["hbond_atoms"] == "N:O":
-                    strength = (2.2 / row["distance"]) * 8
-                else:
-                    strength = (2.2 / row["distance"]) * 8
-
-                data = {
-                    "motif": motif,
-                    "hbond_length": row["distance"],
-                    "name": pdb_name,
-                    "atom_1": row["atom_1"],
-                    "atom_2": row["atom_2"],
-                    "type": row["type"],
-                    "angle_1": angle_1_degrees,
-                    "angle_2": angle_2_degrees,
-                    "nuc_1": pos_1,
-                    "nuc_2": pos_2,
-                    "n_or_other": (
-                        "N-included"
-                        if ps_1 == f"{at1}" or ps_2 == f"{at1}"
-                        else "Other"
-                    ),
-                    "hbond_atoms": row["hbond_atoms"],
-                    "hbond_strength": strength,
-                }
-                print(data)
-                all_data.append(data)
-                break
-
-    return pd.DataFrame(all_data)
+    def __calculate_strength(self, distance, hbond_atoms):
+        return (2.2 / distance) * self.strength_factors.get(hbond_atoms, 8)
 
 
 # dssr features #####################################################################

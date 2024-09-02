@@ -10,7 +10,7 @@ from dms_3d_features.pdb_features import (
     DSSRTorsionFileProcessor,
     get_all_torsional_parameters_from_dssr,
 )
-
+from dms_3d_features.process_motifs import process_mutation_histograms_to_json
 from dms_3d_features.logger import setup_logging, get_logger
 
 warnings.filterwarnings(
@@ -23,6 +23,12 @@ log = get_logger("cli")
 @click.group()
 def cli():
     pass
+
+
+@cli.command()
+def process_mutation_histograms():
+    setup_logging()
+    process_mutation_histograms_to_json()
 
 
 @cli.command()
