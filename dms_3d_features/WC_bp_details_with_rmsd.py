@@ -421,8 +421,8 @@ for j, row1 in filtered_df.iterrows():
         }
         all_data.append(data)
 
-cmd_delete = "rm -rf *.pdb *.par *.dat *.scr *.r3d"
-subprocess.call(cmd_delete, shell=True)
+#cmd_delete = "rm -rf *.pdb *.par *.dat *.scr *.r3d"
+#subprocess.call(cmd_delete, shell=True)
 
 df_fin = pd.DataFrame(all_data)
 df_fin.to_json(f"{RESOURCE_PATH}/jsons/wc_details.json", orient="records")
