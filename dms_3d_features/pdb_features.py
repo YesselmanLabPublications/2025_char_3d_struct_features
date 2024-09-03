@@ -118,9 +118,30 @@ def compute_solvent_accessibility_all(
 # hydrogen bonds #####################################################################
 
 
+def calculate_hbond_strength_all(pdb_dir: str) -> pd.DataFrame:
+    """
+    Main function to calculate hydrogen bond strength for all PDB files in a directory.
+
+    Args:
+        pdb_dir (str): Directory containing PDB files.
+
+    Returns:
+        pd.DataFrame: DataFrame containing hydrogen bond strength data.
+    """
+    pdb_files = glob.glob(f"{pdb_dir}/*/*.pdb")
+    all_data = []
+    hbond_calculator = HbondCalculator()
+
+    for pdb in pdb_files:
+        df = hbond_calculator.calculate_hbond_strength(pdb)
+        all_data.append(df)
+
+    return pd.concat(all_data, ignore_index=True)
+
+
 class HbondCalculator:
     def __init__(self):
-        self.angle_atom_pair = {
+        self.angle_pairs = {
             "N1": "C2",
             "N3": "C2",
             "N6": "C6",
@@ -139,38 +160,36 @@ class HbondCalculator:
         }
         self.strength_factors = {"O:O": 21, "N:N": 13, "N:O": 8}
 
-    def calculate_hbond_strength(self, pdb_dir: str) -> pd.DataFrame:
+    def calculate_hbond_strength(self, pdb_path: str) -> pd.DataFrame:
         """
-        Main function to calculate hydrogen bond strength for all PDB files in a directory.
+        Calculate hydrogen bond strength for a single PDB file.
 
         Args:
-            pdb_dir (str): Directory containing PDB files.
+            pdb_path (str): Path to the PDB file.
 
         Returns:
             pd.DataFrame: DataFrame containing hydrogen bond strength data.
         """
-        all_data = []
-        pdb_files = glob.glob(f"{pdb_dir}/*/*.pdb")
+        motif = os.path.basename(os.path.dirname(pdb_path))
+        pdb_name = os.path.basename(pdb_path)
+        df_hbonds = self.__extract_hbond_length(pdb_path)
+        atom_df = PandasPdb.PandasPdb().read_pdb(pdb_path).df["ATOM"]
 
-        for pdb in pdb_files:
-            motif = os.path.basename(os.path.dirname(pdb))
-            pdb_name = os.path.basename(pdb)
-            df_hbonds = self.__extract_hbond_length(pdb)
-            atom_df = PandasPdb().read_pdb(pdb).df["ATOM"]
+        pos_data = self.__get_position_data(motif)
+        hbond_data = self.__process_hbonds(df_hbonds, atom_df, pos_data, pdb_name)
 
-            pos_data = self.__get_position_data(motif)
-            hbond_data = self.__process_hbonds(df_hbonds, atom_df, pos_data, pdb_name)
-            all_data.extend(hbond_data)
-
-        return pd.DataFrame(all_data)
+        return pd.DataFrame(hbond_data)
 
     def __get_position_data(self, motif):
         a_pos1, a_pos2, c_pos1, c_pos2 = self.__find_positions_of_a_and_cs(motif)
         pos1 = a_pos1 + a_pos2 + c_pos1 + c_pos2
-        a_pos = self.__multiply_list(a_pos1, "A") + self.__multiply_list(a_pos2, "A")
-        c_pos = self.__multiply_list(c_pos1, "C") + self.__multiply_list(c_pos2, "C")
+        a_pos = self.__prepend_char_to_list_elements(
+            a_pos1, "A"
+        ) + self.__prepend_char_to_list_elements(a_pos2, "A")
+        c_pos = self.__prepend_char_to_list_elements(
+            c_pos1, "C"
+        ) + self.__prepend_char_to_list_elements(c_pos2, "C")
         pos = a_pos + c_pos
-
         var_holder = {f"n{n}": l for n, l in zip(pos1, pos)}
         var_holder.update(
             {f"a{n}": "N1" if l[0] == "A" else "N3" for n, l in zip(pos1, pos)}
@@ -182,45 +201,53 @@ class HbondCalculator:
             "var_holder": var_holder,
         }
 
-    def __process_hbonds(self, df_hbonds, atom_df, pos_data, pdb_name):
-        hbond_data = []
-        for _, row in df_hbonds.iterrows():
-            if row["distance"] >= 3.3 or row["type"] != "p":
+    def __process_hbonds(self, hbond_df, atom_df, pos_data, pdb_filename):
+        def parse_atom_info(atom_string):
+            atom_name, residue_number = atom_string.split("@")
+            position = residue_number
+            residue_index = int(residue_number[1:])
+            return atom_name, position, residue_index
+
+        processed_hbonds = []
+        for _, hbond in hbond_df.iterrows():
+            if hbond["distance"] >= 3.3 or hbond["type"] != "p":
                 continue
 
-            pos_1, pos_2 = row["atom_1"].split("@")[1], row["atom_2"].split("@")[1]
-            num_1, num_2 = int(pos_1[1:]), int(pos_2[1:])
-            ps_1, ps_2 = row["atom_1"].split("@")[0], row["atom_2"].split("@")[0]
+            atom1_name, atom1_pos, atom1_index = parse_atom_info(hbond["atom_1"])
+            atom2_name, atom2_pos, atom2_index = parse_atom_info(hbond["atom_2"])
 
-            if pos_1 != f"{pos_data['n1']}" and pos_2 != f"{pos_data['n1']}":
+            if atom1_pos != f"{pos_data['n1']}" and atom2_pos != f"{pos_data['n1']}":
+                continue
+            if not (atom1_name in self.angle_pairs and atom2_name in self.angle_pairs):
+                log.warning(
+                    f"Atom pair not found in angle_atom_pair: {hbond['atom_1']} - {hbond['atom_2']}"
+                )
                 continue
 
-            if ps_1 not in self.angle_atom_pair or ps_2 not in self.angle_atom_pair:
+            atom_coordinates = self.__get_atom_coordinates(
+                atom_df, atom1_name, atom2_name, atom1_index, atom2_index
+            )
+            if any(coord.empty for coord in atom_coordinates.values()):
                 continue
 
-            coords = self.__get_atom_coordinates(atom_df, ps_1, ps_2, num_1, num_2)
+            angle1, angle2 = self.__calculate_angles(atom_coordinates)
+            hbond_strength = self.__calculate_strength(
+                hbond["distance"], hbond["hbond_atoms"]
+            )
 
-            if any(coord.empty for coord in coords.values()):
-                continue
-
-            angle_1_degrees, angle_2_degrees = self.__calculate_angles(coords)
-            strength = self.__calculate_strength(row["distance"], row["hbond_atoms"])
-
-            hbond_data.append(
+            processed_hbonds.append(
                 self.__create_hbond_data(
-                    row,
+                    hbond,
                     pos_data,
-                    pdb_name,
-                    pos_1,
-                    pos_2,
-                    angle_1_degrees,
-                    angle_2_degrees,
-                    strength,
+                    pdb_filename,
+                    atom1_pos,
+                    atom2_pos,
+                    angle1,
+                    angle2,
+                    hbond_strength,
                 )
             )
-            break
-
-        return hbond_data
+        return processed_hbonds
 
     def __create_hbond_data(
         self,
@@ -233,31 +260,28 @@ class HbondCalculator:
         angle_2_degrees,
         strength,
     ):
+        # Check if either atom_1 or atom_2 matches the target atom (at1)
+        is_target_atom_involved = (
+            row["atom_1"].split("@")[0] == pos_data["at1"]
+            or row["atom_2"].split("@")[0] == pos_data["at1"]
+        )
+        # Classify the bond based on target atom involvement
+        n_or_other = "N-included" if is_target_atom_involved else "Other"
         return {
-            "motif": os.path.dirname(pdb_name),
             "hbond_length": row["distance"],
-            "name": pdb_name,
-            "atom_1": row["atom_1"],
-            "atom_2": row["atom_2"],
-            "type": row["type"],
+            "pdb": pdb_name,
             "angle_1": angle_1_degrees,
             "angle_2": angle_2_degrees,
-            "nuc_1": pos_1,
-            "nuc_2": pos_2,
-            "n_or_other": (
-                "N-included"
-                if row["atom_1"].split("@")[0] == f"{pos_data['at1']}"
-                or row["atom_2"].split("@")[0] == f"{pos_data['at1']}"
-                else "Other"
-            ),
+            "r_pos_1": pos_1,
+            "r_pos_2": pos_2,
+            "n_or_other": n_or_other,
             "hbond_atoms": row["hbond_atoms"],
             "hbond_strength": strength,
         }
 
-    def __generate_hbond_output_file_from_dssr(self, pdb_path: str) -> str:
-        pdb_filename = os.path.basename(pdb_path)
-        output_file = f"data/dssr-output/{pdb_filename}_hbond.txt"
-
+    def __generate_hbond_output_file_from_dssr(
+        self, pdb_path: str, output_file: str
+    ) -> str:
         try:
             subprocess.run(
                 ["x3dna-dssr", f"-i={pdb_path}", "--get-hbonds", f"-o={output_file}"],
@@ -297,12 +321,13 @@ class HbondCalculator:
         )
 
     def __extract_hbond_length(self, pdb_path: str) -> pd.DataFrame:
-        self.__generate_hbond_output_file_from_dssr(pdb_path)
-        txt_file = os.path.basename(pdb_path)
-        return self.__load_hbonds_file(f"data/dssr-output/{txt_file[:-4]}_hbonds.txt")
+        pdb_filename = os.path.basename(pdb_path)
+        output_file = f"data/dssr-output/{pdb_filename[:-4]}_hbonds.txt"
+        self.__generate_hbond_output_file_from_dssr(pdb_path, output_file)
+        return self.__load_hbonds_file(output_file)
 
     @staticmethod
-    def __multiply_list(lst: list, char: str) -> list:
+    def __prepend_char_to_list_elements(lst: list, char: str) -> list:
         return [f"{char}{elem}" for elem in lst]
 
     @staticmethod
@@ -324,14 +349,14 @@ class HbondCalculator:
                 (atom_df["atom_name"] == ps_1) & (atom_df["residue_number"] == num_1)
             ],
             "coords_12": atom_df[
-                (atom_df["atom_name"] == self.angle_atom_pair[ps_1])
+                (atom_df["atom_name"] == self.angle_pairs[ps_1])
                 & (atom_df["residue_number"] == num_1)
             ],
             "coords_21": atom_df[
                 (atom_df["atom_name"] == ps_2) & (atom_df["residue_number"] == num_2)
             ],
             "coords_22": atom_df[
-                (atom_df["atom_name"] == self.angle_atom_pair[ps_2])
+                (atom_df["atom_name"] == self.angle_pairs[ps_2])
                 & (atom_df["residue_number"] == num_2)
             ],
         }

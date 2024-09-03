@@ -11,6 +11,7 @@ import subprocess
 # solvent accessibility ##############################################################
 DATA_PATH = "data/pdbs"
 
+
 def compute_solvent_accessibility(
     pdb_path: str, probe_radius: float = 2.0
 ) -> pd.DataFrame:
@@ -158,10 +159,9 @@ def extract_hbond_length(motif: str) -> pd.DataFrame:
     for pdb in filenames:
         generate_hbond_output_file_from_dssr(pdb)
         txt_file = os.path.basename(pdb)
-        read_file = load_hbonds_file(
-            f"data/dssr-output/{txt_file[:-4]}_hbonds.txt"
-        )
+        read_file = load_hbonds_file(f"data/dssr-output/{txt_file[:-4]}_hbond.txt")
         all_hbonds.append(read_file)
+        break
 
     return pd.concat(all_hbonds, ignore_index=True) if all_hbonds else pd.DataFrame()
 
@@ -211,8 +211,10 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
     var_holder = {}
     all_data = []
     pdb_files = glob.glob(f"{pdb_dir}/*/*.pdb")
-    
+
     for pdb in pdb_files:
+        if pdb != "data/pdbs/ACG_CU/TWOWAY.6N7R.0-1.CU-ACG.0.pdb":
+            continue
         motif = pdb.split("/")[-2]
         name = pdb.split("/")[-1]
         a_pos1, a_pos2, c_pos1, c_pos2 = find_positions_of_a_and_cs(motif)
@@ -234,7 +236,7 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
         for i, row in df_fn.iterrows():
             if not (row["distance"] < 3.3 and row["type"] == "p"):
                 continue
-            
+
             ppdb = PandasPdb().read_pdb(pdb)
             ATOM = ppdb.df["ATOM"]
             pos_1 = row["atom_1"].split("@")[1]
@@ -302,7 +304,7 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
                     np.dot(b1b2, b1a1) / (np.linalg.norm(b1b2) * np.linalg.norm(b1a1))
                 )
                 angle_2_degrees = math.degrees(angle_2_radian)
-                
+
                 if row["hbond_atoms"] == "O:O":
                     strength = (2.2 / row["distance"]) * 21
                 elif row["hbond_atoms"] == "N:N":
@@ -311,7 +313,7 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
                     strength = (2.2 / row["distance"]) * 8
                 else:
                     strength = (2.2 / row["distance"]) * 8
-                    
+
                 data = {
                     "motif": motif,
                     "hbond_length": row["distance"],
@@ -331,7 +333,12 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
                     "hbond_atoms": row["hbond_atoms"],
                     "hbond_strength": strength,
                 }
-                print(data)
                 all_data.append(data)
+        break
 
     return pd.DataFrame(all_data)
+
+
+if __name__ == "__main__":
+    df = calculate_hbond_strength(DATA_PATH)
+    print(df)
