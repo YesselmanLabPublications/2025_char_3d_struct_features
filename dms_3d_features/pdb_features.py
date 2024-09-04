@@ -150,7 +150,8 @@ class HbondCalculator:
             "O3'": "C3'",
             "O4'": "C4'",
             "O5'": "C5'",
-            "OP1": "O5'",
+            "OP1": "P",
+            "OP2": "P",
         }
         self.strength_factors = {"O:O": 21, "N:N": 13, "N:O": 8}
 
