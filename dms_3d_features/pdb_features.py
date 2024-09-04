@@ -91,11 +91,6 @@ def compute_solvent_accessibility_all(
 
     Returns:
         pd.DataFrame: A DataFrame containing the computed solvent accessibility values.
-
-    Example:
-        >>> pdb_dir = '/path/to/pdb/files'
-        >>> probe_radius = 2.0
-        >>> df = compute_solvent_accessibility_all(pdb_dir, probe_radius)
     """
     pdb_paths = glob.glob(f"{pdb_dir}/*/*.pdb")
     dfs = []
@@ -131,11 +126,9 @@ def calculate_hbond_strength_all(pdb_dir: str) -> pd.DataFrame:
     pdb_files = glob.glob(f"{pdb_dir}/*/*.pdb")
     all_data = []
     hbond_calculator = HbondCalculator()
-
     for pdb in pdb_files:
         df = hbond_calculator.calculate_hbond_strength(pdb)
         all_data.append(df)
-
     return pd.concat(all_data, ignore_index=True)
 
 
