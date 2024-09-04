@@ -211,7 +211,7 @@ class HbondCalculator:
 
             if not (atom1_name in self.angle_pairs and atom2_name in self.angle_pairs):
                 log.warning(
-                    f"Atom pair not found in angle_atom_pair: {hbond['patom_1']} - {hbond['atom_2']}"
+                    f"Atom pair not found in angle_atom_pair: {hbond['atom_1']} - {hbond['atom_2']}"
                 )
                 continue
 
