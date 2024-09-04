@@ -196,19 +196,17 @@ class HbondCalculator:
         }
 
     def __process_hbonds(self, hbond_df, atom_df, pos_data, pdb_filename):
-        def parse_atom_info(atom_string):
-            atom_name, residue_number = atom_string.split("@")
-            position = residue_number
-            residue_index = int(residue_number[1:])
-            return atom_name, position, residue_index
-
         processed_hbonds = []
         for _, hbond in hbond_df.iterrows():
             if hbond["distance"] >= 3.3 or hbond["type"] != "p":
                 continue
 
-            atom1_name, atom1_pos, atom1_index = parse_atom_info(hbond["atom_1"])
-            atom2_name, atom2_pos, atom2_index = parse_atom_info(hbond["atom_2"])
+            atom1_name, atom1_identity, atom1_index = self.__parse_atom_info(
+                hbond["atom_1"]
+            )
+            atom2_name, atom2_identity, atom2_index = self.__parse_atom_info(
+                hbond["atom_2"]
+            )
 
             if not (atom1_name in self.angle_pairs and atom2_name in self.angle_pairs):
                 log.warning(
@@ -227,39 +225,95 @@ class HbondCalculator:
                 hbond["distance"], hbond["hbond_atoms"]
             )
 
-            # Check if either atom_1 or atom_2 matches the target atom (at1)
             is_target_atom_involved = (
                 hbond["atom_1"].split("@")[0] == pos_data["at1"]
                 or hbond["atom_2"].split("@")[0] == pos_data["at1"]
             )
-            # Classify the bond based on target atom involvement
             n_or_other = "N-included" if is_target_atom_involved else "Other"
 
-            processed_hbonds.append(
+            processed_hbonds.extend(
+                self.__create_hbond_entries(
+                    hbond,
+                    pdb_filename,
+                    angle1,
+                    angle2,
+                    atom1_name,
+                    atom1_identity,
+                    atom1_index,
+                    atom2_name,
+                    atom2_identity,
+                    atom2_index,
+                    n_or_other,
+                    hbond_strength,
+                )
+            )
+
+        return processed_hbonds
+
+    def __create_hbond_entries(
+        self,
+        hbond,
+        pdb_filename,
+        angle1,
+        angle2,
+        atom1_name,
+        atom1_identity,
+        atom1_index,
+        atom2_name,
+        atom2_identity,
+        atom2_index,
+        n_or_other,
+        hbond_strength,
+    ):
+        atom_info = [
+            {
+                "r_pos": atom1_index,
+                "r_nuc": atom1_identity,
+                "atom": atom1_name,
+                "hbond_angle": angle1,
+            },
+            {
+                "r_pos": atom2_index,
+                "r_nuc": atom2_identity,
+                "atom": atom2_name,
+                "hbond_angle": angle2,
+            },
+        ]
+
+        hbond_entries = []
+        for i in range(2):
+            hbond_entries.append(
                 {
                     "hbond_length": hbond["distance"],
                     "pdb": pdb_filename,
-                    "angle_1": angle1,
-                    "angle_2": angle2,
-                    "r_pos_1": atom1_index,
-                    "r_pos_2": atom2_index,
+                    "hbond_angle": atom_info[i]["hbond_angle"],
+                    "r_pos": atom_info[i]["r_pos"],
+                    "r_nuc": atom_info[i]["r_nuc"],
+                    "r_atom": atom_info[i]["atom"],
                     "n_or_other": n_or_other,
                     "hbond_atoms": hbond["hbond_atoms"],
                     "hbond_strength": hbond_strength,
-                    "atom_1": atom1_name,
-                    "atom_2": atom2_name,
+                    "partner_r_pos": atom_info[1 - i]["r_pos"],
+                    "partner_r_nuc": atom_info[1 - i]["r_nuc"],
+                    "partner_atom": atom_info[1 - i]["atom"],
                 }
             )
-        return processed_hbonds
+        return hbond_entries
+
+    def __parse_atom_info(self, atom_string):
+        atom_name, residue_number = atom_string.split("@")
+        residue_identity = residue_number[0]
+        residue_index = int(residue_number[1:])
+        return atom_name, residue_identity, residue_index
 
     def __generate_hbond_output_file_from_dssr(
         self, pdb_path: str, output_file: str
     ) -> str:
         if os.path.exists(output_file):
-            log.info(f"Output file already exists: {output_file}. Skipping command.")
             return output_file
 
         try:
+            log.info(f"Generating hbonds file for {pdb_path}")
             subprocess.run(
                 ["x3dna-dssr", f"-i={pdb_path}", "--get-hbonds", f"-o={output_file}"],
                 check=True,

@@ -398,22 +398,10 @@ def plot_motif_boxplot_stripplot(
 
     return ax
 
-<<<<<<< HEAD
+
 def plot_whole_pdb_reactivity(df: pd.DataFrame, ax=None) -> axes:
     """
     Plots the whole RNA data points.
-=======
-
-def plot_motif_boxplot_stripplot_with_whole_pdb_reactivity(
-    df_sub: pd.DataFrame, ax=None
-) -> axes:
-    """
-    Plots a boxplot with a strip plot overlay for each nucleotide position in a motif, including whole RNA data points.
-
-    This function generates a combined boxplot and strip plot for each nucleotide position in the given motif sequence.
-    It plots the reactivity data (`r_data`) and overlays it with whole RNA DMS data (`dms_whole_rna`).
-    The x-axis shows the motif sequence, while the secondary x-axis shows the corresponding secondary structure.
->>>>>>> jdy/update
 
     Args:
         df_sub (pd.DataFrame): A DataFrame
@@ -425,53 +413,24 @@ def plot_motif_boxplot_stripplot_with_whole_pdb_reactivity(
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(7, 7))
-<<<<<<< HEAD
-    
+
     sequence = df.iloc[0]["m_sequence"]
     pos = list(range(len(sequence)))
-    
+
     labels = []
     for n, s in zip(df.iloc[0]["m_sequence"], df.iloc[0]["m_structure"]):
         labels.append(f"{n}\n{s}")
-    
+
     sns.scatterplot(
-        x = "r_loc_pos",
+        x="r_loc_pos",
         y="whole_rna_reac",
-        data=df, 
+        data=df,
         color="magenta",
         s=70,
         ax=ax,
-        zorder=3
+        zorder=3,
     )
     ax.set_xticks(ticks=range(len(pos)), labels=labels)
-=======
-    x_label = list(df_sub.iloc[0]["m_sequence"])
-    struct = list(df_sub.iloc[0]["m_structure"])
-    for i, (idx, row) in enumerate(df_sub.iterrows()):
-        if row["average"] != 0:
-            temp_df = pd.DataFrame(
-                {
-                    "r_data": row["r_data"],
-                    "nucleotide": [f"{row['nucleotide']} (Row {idx})"]
-                    * len(row["r_data"]),
-                    "whole_rna_reac": row["whole_rna_reac"],
-                }
-            )
-            x_values = np.full(len(temp_df["r_data"]), i)
-            ax.boxplot(temp_df["r_data"], patch_artist=True, widths=0.3, positions=[i])
-            ax.scatter(
-                x_values, temp_df["r_data"], color="black", alpha=0.5, zorder=3, s=5
-            )
-            ax.scatter(
-                x_values,
-                temp_df["whole_rna_reac"],
-                color="red",
-                alpha=0.5,
-                zorder=3,
-                s=20,
-            )
-
->>>>>>> jdy/update
     return ax
 
 
