@@ -43,15 +43,18 @@ def normalize(column):
 
 def trim(df: pd.DataFrame, start: int, end: int) -> pd.DataFrame:
     """
-    Trims the 'sequence', 'structure', and 'data' columns of the DataFrame to the given start and end indices.
+    Trims the 'sequence', 'structure', and 'data' columns of the DataFrame to the
+    given start and end indices.
 
     Args:
-        df (pd.DataFrame): A DataFrame with 'sequence', 'structure', and 'data' columns, where 'data' contains lists of numbers.
+        df (pd.DataFrame): A DataFrame with 'sequence', 'structure', and 'data'
+            columns, where 'data' contains lists of numbers.
         start (int): The start index for trimming.
         end (int): The end index for trimming.
 
     Returns:
-        pd.DataFrame: A trimmed DataFrame with the 'sequence', 'structure', and 'data' columns adjusted to the specified indices.
+        pd.DataFrame: A trimmed DataFrame with the 'sequence', 'structure', and
+        'data' columns adjusted to the specified indices.
     """
 
     def trim_column(column, start, end):
@@ -81,19 +84,22 @@ def trim_p5_and_p3(df: pd.DataFrame, is_rna=True) -> pd.DataFrame:
     """
     Trims the 5' and 3' ends of the data in the DataFrame.
 
-    This function reads a CSV file containing p5 sequences, converts these sequences to RNA,
-    checks for a common p5 sequence in the given DataFrame, and trims the DataFrame based on
-    the length of this common p5 sequence and a fixed 3' end length.
+    This function reads a CSV file containing p5 sequences, converts these
+    sequences to RNA, checks for a common p5 sequence in the given DataFrame,
+    and trims the DataFrame based on the length of this common p5 sequence and
+    a fixed 3' end length.
 
     Args:
-        df (pd.DataFrame): A DataFrame with a 'data' column containing sequences as strings.
+        df (pd.DataFrame): A DataFrame with a 'data' column containing sequences
+            as strings.
+        is_rna (bool): Flag indicating if the sequences are RNA. Default is True.
 
     Returns:
         pd.DataFrame: A trimmed DataFrame with the 5' and 3' ends trimmed.
 
     Raises:
-        ValueError: If no common p5 sequence is found or the sequence is not registered in the CSV file.
-
+        ValueError: If no common p5 sequence is found or the sequence is not
+            registered in the CSV file.
     """
     df_p5 = pd.read_csv(f"{RESOURCES_PATH}/csvs/p5_sequences.csv")
     if is_rna:
@@ -166,26 +172,6 @@ def flip_pair(bp_name: str) -> str:
     return bp_name[::-1]
 
 
-def get_resi_pos(seq: str, pos: int) -> int:
-    """
-    Calculate the residue position starting from 0.
-
-    Args:
-        seq (str): The sequence string.
-        pos (int): The original position (starting from 3).
-
-    Returns:
-        int: The adjusted position.
-    """
-    strand_len = seq.split("_")
-    if pos > (len(strand_len[0]) + 2):
-        new_pos = pos - 6
-        return new_pos
-    else:
-        new_pos = pos - 3
-        return new_pos
-
-
 # processing steps ##################################################################
 
 
@@ -256,7 +242,7 @@ class GenerateMotifDataFrame:
     A class used to generate and process motif data from constructs.
     """
 
-    def run(self, df: pd.DataFrame) -> pd.DataFrame:
+    def run(self, df: pd.DataFrame, name: str) -> pd.DataFrame:
         """
         Process the input dataframe to generate motif data.
 
@@ -266,6 +252,7 @@ class GenerateMotifDataFrame:
         Returns:
             pd.DataFrame: Processed dataframe with average motif data.
         """
+        self.name = name
         df_filtered = df.query("num_aligned > 2000 and sn > 4.0")
         df_motif = self._create_motif_dataframe(df_filtered)
         df_motif_standardized = self._standardize_motifs(df_motif)
@@ -281,7 +268,7 @@ class GenerateMotifDataFrame:
                 motif_data.append(self._extract_motif_data(row, j, m))
         df_motif = pd.DataFrame(motif_data)
         df_motif.to_json(
-            f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs.json",
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs.json",
             orient="records",
         )
         return df_motif
@@ -358,7 +345,7 @@ class GenerateMotifDataFrame:
 
         df_motif = df_motif.drop(columns=["strand1", "strand2"])
         df_motif.to_json(
-            f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_standard.json",
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs_standard.json",
             orient="records",
         )
         return df_motif
@@ -428,7 +415,7 @@ class GenerateMotifDataFrame:
 
         df_avg = pd.DataFrame(avg_data)
         df_avg.to_json(
-            f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json",
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs_avg.json",
             orient="records",
         )
         return df_avg
