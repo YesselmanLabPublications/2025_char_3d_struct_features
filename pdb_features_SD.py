@@ -97,6 +97,8 @@ def generate_hbond_output_file_from_dssr(pdb_path: str) -> None:
         >>> generate_hbond_output_file_from_dssr('/path/to/model.pdb')
     """
     pdb_path_name = os.path.basename(pdb_path)
+    if not os.path.exists("data/dssr-output/"):
+        os.makedirs("data/dssr-output/")
     output_file = f"data/dssr-output/{pdb_path_name[:-4]}_hbond.txt"
     command_dssr = f"x3dna-dssr -i={pdb_path} --get-hbonds -o={output_file}"
     subprocess.call(command_dssr, shell=True)
@@ -222,21 +224,12 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
         a_pos = multiply_list(a_pos1, "A") + multiply_list(a_pos2, "A")
         c_pos = multiply_list(c_pos1, "C") + multiply_list(c_pos2, "C")
         pos = a_pos + c_pos
-
-        for n, l in zip(pos1, pos):
-            var_holder[f"n{n}"] = l
-            var_holder[f"a{n}"] = "N1" if l[0] == "A" else "N3"
-
-        n1 = var_holder[f"n{n}"]
-        at1 = var_holder[f"a{n}"]
-
         pdb_name = os.path.basename(pdb)
         df_fn = extract_hbond_length(motif)
-
+        
         for i, row in df_fn.iterrows():
             if not (row["distance"] < 3.3 and row["type"] == "p"):
                 continue
-
             ppdb = PandasPdb().read_pdb(pdb)
             ATOM = ppdb.df["ATOM"]
             pos_1 = row["atom_1"].split("@")[1]
@@ -245,7 +238,6 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
             num_2 = int(pos_2[1:])
             ps_1 = row["atom_1"].split("@")[0]
             ps_2 = row["atom_2"].split("@")[0]
-
             angle_atom_pair = {
                 "N1": "C2",
                 "N3": "C2",
@@ -263,78 +255,79 @@ def calculate_hbond_strength(pdb_dir: str) -> pd.DataFrame:
                 "O5'": "C5'",
                 "OP1": "O5'",
             }
+            for n, a in zip(pos1, pos): 
+                at = "N1" if a[0] == "A" else "N3"
+                if (pos_1 == f"{a}") or (pos_2 == f"{a}"):
+                    if not (ps_1 in angle_atom_pair and ps_2 in angle_atom_pair):
+                        continue
+                    coords_11 = ATOM[
+                        (ATOM["atom_name"] == ps_1) & (ATOM["residue_number"] == num_1)
+                    ]
+                    coords_12 = ATOM[
+                        (ATOM["atom_name"] == angle_atom_pair[ps_1])
+                        & (ATOM["residue_number"] == num_1)
+                    ]
+                    coords_21 = ATOM[
+                        (ATOM["atom_name"] == ps_2) & (ATOM["residue_number"] == num_2)
+                    ]
+                    coords_22 = ATOM[
+                        (ATOM["atom_name"] == angle_atom_pair[ps_2])
+                        & (ATOM["residue_number"] == num_2)
+                    ]
+                    if (
+                        coords_11.empty
+                        or coords_12.empty
+                        or coords_21.empty
+                        or coords_22.empty
+                    ):
+                        continue
+                    a1 = coords_11[["x_coord", "y_coord", "z_coord"]].values[0]
+                    a2 = coords_12[["x_coord", "y_coord", "z_coord"]].values[0]
+                    b1 = coords_21[["x_coord", "y_coord", "z_coord"]].values[0]
+                    b2 = coords_22[["x_coord", "y_coord", "z_coord"]].values[0]
+                    a1a2 = a2 - a1
+                    a1b1 = b1 - a1
+                    angle_1_radian = np.arccos(
+                        np.dot(a1a2, a1b1) / (np.linalg.norm(a1a2) * np.linalg.norm(a1b1))
+                    )
+                    angle_1_degrees = math.degrees(angle_1_radian)
+                    b1b2 = b2 - b1
+                    b1a1 = a1 - b1
+                    angle_2_radian = np.arccos(
+                        np.dot(b1b2, b1a1) / (np.linalg.norm(b1b2) * np.linalg.norm(b1a1))
+                    )
+                    angle_2_degrees = math.degrees(angle_2_radian)
 
-            if pos_1 == f"{n1}" or pos_2 == f"{n1}":
-                if not (ps_1 in angle_atom_pair and ps_2 in angle_atom_pair):
-                    continue
-                coords_11 = ATOM[
-                    (ATOM["atom_name"] == ps_1) & (ATOM["residue_number"] == num_1)
-                ]
-                coords_12 = ATOM[
-                    (ATOM["atom_name"] == angle_atom_pair[ps_1])
-                    & (ATOM["residue_number"] == num_1)
-                ]
-                coords_21 = ATOM[
-                    (ATOM["atom_name"] == ps_2) & (ATOM["residue_number"] == num_2)
-                ]
-                coords_22 = ATOM[
-                    (ATOM["atom_name"] == angle_atom_pair[ps_2])
-                    & (ATOM["residue_number"] == num_2)
-                ]
-                if (
-                    coords_11.empty
-                    or coords_12.empty
-                    or coords_21.empty
-                    or coords_22.empty
-                ):
-                    continue
-                a1 = coords_11[["x_coord", "y_coord", "z_coord"]].values[0]
-                a2 = coords_12[["x_coord", "y_coord", "z_coord"]].values[0]
-                b1 = coords_21[["x_coord", "y_coord", "z_coord"]].values[0]
-                b2 = coords_22[["x_coord", "y_coord", "z_coord"]].values[0]
-                a1a2 = a2 - a1
-                a1b1 = b1 - a1
-                angle_1_radian = np.arccos(
-                    np.dot(a1a2, a1b1) / (np.linalg.norm(a1a2) * np.linalg.norm(a1b1))
-                )
-                angle_1_degrees = math.degrees(angle_1_radian)
-                b1b2 = b2 - b1
-                b1a1 = a1 - b1
-                angle_2_radian = np.arccos(
-                    np.dot(b1b2, b1a1) / (np.linalg.norm(b1b2) * np.linalg.norm(b1a1))
-                )
-                angle_2_degrees = math.degrees(angle_2_radian)
+                    if row["hbond_atoms"] == "O:O":
+                        strength = (2.2 / row["distance"]) * 21
+                    elif row["hbond_atoms"] == "N:N":
+                        strength = (2.2 / row["distance"]) * 13
+                    elif row["hbond_atoms"] == "N:O":
+                        strength = (2.2 / row["distance"]) * 8
+                    else:
+                        strength = (2.2 / row["distance"]) * 8
 
-                if row["hbond_atoms"] == "O:O":
-                    strength = (2.2 / row["distance"]) * 21
-                elif row["hbond_atoms"] == "N:N":
-                    strength = (2.2 / row["distance"]) * 13
-                elif row["hbond_atoms"] == "N:O":
-                    strength = (2.2 / row["distance"]) * 8
-                else:
-                    strength = (2.2 / row["distance"]) * 8
-
-                data = {
-                    "motif": motif,
-                    "hbond_length": row["distance"],
-                    "name": pdb_name,
-                    "atom_1": row["atom_1"],
-                    "atom_2": row["atom_2"],
-                    "type": row["type"],
-                    "angle_1": angle_1_degrees,
-                    "angle_2": angle_2_degrees,
-                    "nuc_1": pos_1,
-                    "nuc_2": pos_2,
-                    "n_or_other": (
-                        "N-included"
-                        if ps_1 == f"{at1}" or ps_2 == f"{at1}"
-                        else "Other"
-                    ),
-                    "hbond_atoms": row["hbond_atoms"],
-                    "hbond_strength": strength,
-                }
-                all_data.append(data)
-        break
+                    data = {
+                        "motif": motif,
+                        "hbond_length": row["distance"],
+                        "name": pdb_name,
+                        "atom_1": row["atom_1"],
+                        "atom_2": row["atom_2"],
+                        "type": row["type"],
+                        "angle_1": angle_1_degrees,
+                        "angle_2": angle_2_degrees,
+                        "nuc_1": pos_1,
+                        "nuc_2": pos_2,
+                        "n_or_other": (
+                            "N-included"
+                            if ps_1 == f"{at}" or ps_2 == f"{at}"
+                            else "Other"
+                        ),
+                        "hbond_atoms": row["hbond_atoms"],
+                        "hbond_strength": strength,
+                    }
+                    all_data.append(data)
+        #break
 
     return pd.DataFrame(all_data)
 

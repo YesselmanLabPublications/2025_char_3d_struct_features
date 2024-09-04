@@ -216,8 +216,6 @@ class HbondCalculator:
             atom1_name, atom1_pos, atom1_index = parse_atom_info(hbond["atom_1"])
             atom2_name, atom2_pos, atom2_index = parse_atom_info(hbond["atom_2"])
 
-            if atom1_pos != f"{pos_data['n1']}" and atom2_pos != f"{pos_data['n1']}":
-                continue
             if not (atom1_name in self.angle_pairs and atom2_name in self.angle_pairs):
                 log.warning(
                     f"Atom pair not found in angle_atom_pair: {hbond['atom_1']} - {hbond['atom_2']}"
@@ -235,53 +233,38 @@ class HbondCalculator:
                 hbond["distance"], hbond["hbond_atoms"]
             )
 
+            # Check if either atom_1 or atom_2 matches the target atom (at1)
+            is_target_atom_involved = (
+                hbond["atom_1"].split("@")[0] == pos_data["at1"]
+                or hbond["atom_2"].split("@")[0] == pos_data["at1"]
+            )
+            # Classify the bond based on target atom involvement
+            n_or_other = "N-included" if is_target_atom_involved else "Other"
+
             processed_hbonds.append(
-                self.__create_hbond_data(
-                    hbond,
-                    pos_data,
-                    pdb_filename,
-                    atom1_pos,
-                    atom2_pos,
-                    angle1,
-                    angle2,
-                    hbond_strength,
-                )
+                {
+                    "hbond_length": hbond["distance"],
+                    "pdb": pdb_filename,
+                    "angle_1": angle1,
+                    "angle_2": angle2,
+                    "r_pos_1": atom1_index,
+                    "r_pos_2": atom2_index,
+                    "n_or_other": n_or_other,
+                    "hbond_atoms": hbond["hbond_atoms"],
+                    "hbond_strength": hbond_strength,
+                    "atom_1": atom1_name,
+                    "atom_2": atom2_name,
+                }
             )
         return processed_hbonds
-
-    def __create_hbond_data(
-        self,
-        row,
-        pos_data,
-        pdb_name,
-        pos_1,
-        pos_2,
-        angle_1_degrees,
-        angle_2_degrees,
-        strength,
-    ):
-        # Check if either atom_1 or atom_2 matches the target atom (at1)
-        is_target_atom_involved = (
-            row["atom_1"].split("@")[0] == pos_data["at1"]
-            or row["atom_2"].split("@")[0] == pos_data["at1"]
-        )
-        # Classify the bond based on target atom involvement
-        n_or_other = "N-included" if is_target_atom_involved else "Other"
-        return {
-            "hbond_length": row["distance"],
-            "pdb": pdb_name,
-            "angle_1": angle_1_degrees,
-            "angle_2": angle_2_degrees,
-            "r_pos_1": pos_1,
-            "r_pos_2": pos_2,
-            "n_or_other": n_or_other,
-            "hbond_atoms": row["hbond_atoms"],
-            "hbond_strength": strength,
-        }
 
     def __generate_hbond_output_file_from_dssr(
         self, pdb_path: str, output_file: str
     ) -> str:
+        if os.path.exists(output_file):
+            log.info(f"Output file already exists: {output_file}. Skipping command.")
+            return output_file
+
         try:
             subprocess.run(
                 ["x3dna-dssr", f"-i={pdb_path}", "--get-hbonds", f"-o={output_file}"],
@@ -305,7 +288,8 @@ class HbondCalculator:
 
         return output_file
 
-    def __load_hbonds_file(self, file_path: str) -> pd.DataFrame:
+    @staticmethod
+    def __load_hbonds_file(file_path: str) -> pd.DataFrame:
         column_names = [
             "position_1",
             "position_2",
@@ -367,18 +351,18 @@ class HbondCalculator:
             coord[["x_coord", "y_coord", "z_coord"]].values[0]
             for coord in coords.values()
         ]
-        angle_1_degrees = np.degrees(
-            np.arccos(
-                np.dot(a2 - a1, b1 - a1)
-                / (np.linalg.norm(a2 - a1) * np.linalg.norm(b1 - a1))
+
+        def calculate_angle(v1, v2, v3):
+            return np.degrees(
+                np.arccos(
+                    np.dot(v2 - v1, v3 - v1)
+                    / (np.linalg.norm(v2 - v1) * np.linalg.norm(v3 - v1))
+                )
             )
-        )
-        angle_2_degrees = np.degrees(
-            np.arccos(
-                np.dot(b2 - b1, a1 - b1)
-                / (np.linalg.norm(b2 - b1) * np.linalg.norm(a1 - b1))
-            )
-        )
+
+        angle_1_degrees = calculate_angle(a1, a2, b1)
+        angle_2_degrees = calculate_angle(b1, b2, a1)
+
         return angle_1_degrees, angle_2_degrees
 
     def __calculate_strength(self, distance, hbond_atoms):
