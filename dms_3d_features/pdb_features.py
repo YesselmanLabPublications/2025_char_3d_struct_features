@@ -91,6 +91,7 @@ def compute_solvent_accessibility_all(
 
     Returns:
         pd.DataFrame: A DataFrame containing the computed solvent accessibility values.
+
     """
     pdb_paths = glob.glob(f"{pdb_dir}/*/*.pdb")
     dfs = []
