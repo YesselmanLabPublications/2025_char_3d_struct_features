@@ -1098,7 +1098,7 @@ def calculate_rmsd_bp(bp: str, filename: str, resi_nums: list) -> float:
     }
 
     try:
-        ppdb_ideal = PandasPdb().read_pdb(f"{bp}.pdb")
+        ppdb_ideal = PandasPdb().read_pdb(f"{RESOURCE_PATH}/ideal_pdbs/{bp}.pdb")
         ideal_df = ppdb_ideal.df["ATOM"]
         ppdb_pdb = PandasPdb().read_pdb(filename)
         pdb_df = ppdb_pdb.df["ATOM"]
