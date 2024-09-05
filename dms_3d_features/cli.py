@@ -7,6 +7,7 @@ from dms_3d_features.pdb_features import (
     compute_solvent_accessibility_all,
     DSSRTorsionFileProcessor,
     calculate_hbond_strength_all,
+    process_basepair_details,
 )
 from dms_3d_features.process_motifs import process_mutation_histograms_to_json
 from dms_3d_features.logger import setup_logging, get_logger
@@ -57,12 +58,13 @@ def get_pdb_features():
     # get all sasa values for different probe radii
     # compute_sasa()
     # get all hbonds
-    df_hbonds = calculate_hbond_strength_all("data/pdbs")
-    df_hbonds.to_csv("data/pdb-features/hbonds.csv", index=False)
+    # df_hbonds = calculate_hbond_strength_all("data/pdbs")
+    # df_hbonds.to_csv("data/pdb-features/hbonds.csv", index=False)
     # df = calculate_hbond_strength("data/pdbs")
     # calculate_structural_parameters_with_dssr("data/pdbs")
     # df = get_all_torsional_parameters_from_dssr("data/pdbs")
     # df.to_csv("data/pdb-features/torsions.csv", index=False)
+    process_basepair_details()
 
 
 if __name__ == "__main__":
