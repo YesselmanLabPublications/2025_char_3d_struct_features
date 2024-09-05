@@ -902,10 +902,10 @@ def extract_basepair_details_into_a_table(filename: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the extracted base-pair parameters.
     """
-    start_marker = "Simple base-pair parameters based on RC8--YC6 vectors"
+    start_marker = "Local base-pair parameters"
     end_marker_1 = "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     end_marker_2 = (
-        "----------------------------------------------------------------------------"
+        "****************************************************************************"
     )
 
     with open(filename, "r") as file:
