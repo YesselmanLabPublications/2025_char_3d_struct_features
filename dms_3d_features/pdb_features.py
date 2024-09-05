@@ -1135,7 +1135,6 @@ def process_basepair_details():
         extracted_table = extract_basepair_details_into_a_table(x3dna_out_path)
         if not extracted_table.empty:
             all_tables.append(extracted_table)
-    exit()
 
     combined_df = pd.concat(all_tables, ignore_index=True)
     combined_df.to_csv(f"{RESOURCE_PATH}all_wc_details.csv", index=False)
