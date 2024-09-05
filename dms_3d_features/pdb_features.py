@@ -2,7 +2,7 @@ import glob
 import numpy as np
 import math
 import freesasa
-import biopandas.pdb as PandasPdb
+from biopandas.pdb import PandasPdb
 import pandas as pd
 import os
 from typing import List, Dict, Tuple, Union, Optional
@@ -922,7 +922,8 @@ def extract_basepair_details_into_a_table(filename: str) -> pd.DataFrame:
         elif end_marker_2 in line and start_index is not None:
             end_index_2 = i
             break
-    print(start_index, end_index_1, end_index_2)
+        if line.startswith("File name:"):
+            motif_index = i
 
     all_data = []
 
@@ -935,7 +936,7 @@ def extract_basepair_details_into_a_table(filename: str) -> pd.DataFrame:
             tokens = line[1:].split()
             res = extract_bp_type_and_res_num_into_a_table(filename)
             bp = tokens[1][0] + tokens[1][-1]
-            motif = filename.split("/")[-2]
+            motif = lines[motif_index].split('/')[2]
             data = {
                 "name": os.path.basename(filename),
                 "motif": motif,
@@ -1137,7 +1138,7 @@ def process_basepair_details():
             all_tables.append(extracted_table)
 
     combined_df = pd.concat(all_tables, ignore_index=True)
-    combined_df.to_csv(f"{RESOURCE_PATH}all_wc_details.csv", index=False)
+    combined_df.to_csv(f"{RESOURCE_PATH}/csvs/all_wc_details.csv", index=False)
     filtered_df = combined_df[combined_df["r_type"] == "WC"].copy()
 
     rmsd = []
@@ -1145,7 +1146,7 @@ def process_basepair_details():
         res_num1 = int(row["res_num1"])
         res_num2 = int(row["res_num2"])
 
-        pdb_path = f"{DATA_PATH}/pdbs/{row['motif']}/{row['name'][:-4]}.pdb"
+        pdb_path = f"{DATA_PATH}/pdbs/{row['motif']}/{row['name'][:-10]}.pdb"
         rmsd_val = calculate_rmsd_bp(row["bp"], pdb_path, [res_num1, res_num2])
 
         if rmsd_val is not None:
@@ -1155,8 +1156,8 @@ def process_basepair_details():
         rmsd.append(rmsd_val)
 
     filtered_df["rmsd"] = rmsd
-    filtered_df.to_csv(f"{RESOURCE_PATH}wc_with_rmsd.csv", index=False)
-    df_all = pd.read_csv(f"{MAIN_DATAFRAME_PATH}/pdb_library_1_residues.csv")
+    filtered_df.to_csv(f"{RESOURCE_PATH}/csvs/wc_with_rmsd.csv", index=False)
+    df_all = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
 
     dms_dict = {}
     for k, all_row in df_all.iterrows():
@@ -1221,4 +1222,4 @@ def process_basepair_details():
             all_data.append(data)
 
     df_fin = pd.DataFrame(all_data)
-    df_fin.to_csv("wc_details.csv", index=False)
+    df_fin.to_json(f"{RESOURCE_PATH}/jsons/wc_details.json", orient="records")
