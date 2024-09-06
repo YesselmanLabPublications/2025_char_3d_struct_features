@@ -8,6 +8,7 @@ import os
 from typing import List, Dict, Tuple, Union, Optional
 import subprocess
 import shutil
+import regex as re
 
 from dms_3d_features.logger import get_logger
 from dms_3d_features.paths import DATA_PATH
@@ -833,12 +834,8 @@ def extract_bp_type_and_res_num_into_a_table(filename: str) -> list:
         list: A list containing three lists: base-pair types, residue numbers for the first base,
               and residue numbers for the second base.
     """
-    start_marker = (
-        "RMSD of the bases (----- for WC bp, + for isolated bp, x for helix change)"
-    )
-    end_marker_1 = "Note: This structure contains"
-    end_marker_2 = (
-        "****************************************************************************"
+    pattern = re.compile(
+        r"\s*(\d*)\s*\((.*?)\)\s+.*?(\d+)_:\[\.\.(.)\](.)[-A-Z\*\+\-]+[A-Z]+\[\.\.(.)\]:\.*(\d+)_:-<.*?\((.*?)\)"
     )
 
     bp_types = []
@@ -848,42 +845,15 @@ def extract_bp_type_and_res_num_into_a_table(filename: str) -> list:
     with open(filename, "r") as file:
         lines = file.readlines()
 
-    start_index = end_index_1 = end_index_2 = None
+        for line in lines:
+            match = pattern.search(line)
+            if match:
+                res_num1 = match.group(3)
+                res_num2 = match.group(7)
+                bp_type = "WC" if "-----" in line else "NON-WC"
 
-    for i, line in enumerate(lines):
-        if start_marker in line:
-            start_index = i
-        if end_marker_1 in line and start_index is not None:
-            end_index_1 = i
-            break
-        elif end_marker_2 in line and start_index is not None:
-            end_index_2 = i
-            break
-
-    if start_index is not None:
-        if end_index_1 is not None:
-            table_section = lines[start_index + 3 : end_index_1 - 1]
-        elif end_index_2 is not None:
-            table_section = lines[start_index + 3 : end_index_2]
-        for j, line in enumerate(table_section):
-            tokens = line.split()
-
-            res_num2 = tokens[2].split("_")[1].split(".")[-1]
-            res_nums2.append(res_num2)
-            if tokens[2].split("_")[0].split(":")[1].split(".")[2] == "":
-                res_num1 = tokens[2].split("_")[0].split(":")[1].split(".")[3]
                 res_nums1.append(res_num1)
-            else:
-                res_num1 = tokens[2].split("_")[0].split(":")[1].split(".")[2]
-                res_nums1.append(res_num1)
-
-            bp = tokens[2].split("]")[1].split("[")[0][1:-1]
-
-            if bp != "-----":
-                bp_type = "NON-WC"
-                bp_types.append(bp_type)
-            else:
-                bp_type = "WC"
+                res_nums2.append(res_num2)
                 bp_types.append(bp_type)
 
     return bp_types, res_nums1, res_nums2
@@ -902,59 +872,64 @@ def extract_basepair_details_into_a_table(filename: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the extracted base-pair parameters.
     """
-    start_marker = "Local base-pair parameters"
-    end_marker_1 = "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    end_marker_2 = (
-        "****************************************************************************"
+    pattern = re.compile(
+        r"\s*(\d*)\s*([A-Z]\+[A-Z]|[A-Z]-[A-Z])\s+([-]?\d+\.\d+)\s+([-]?\d+\.\d+)\s+"
+        r"([-]?\d+\.\d+)\s+([-]?\d+\.\d+)\s+([-]?\d+\.\d+)\s+([-]?\d+\.\d+)"
     )
 
+    # Extract base-pair types and residue numbers from a separate function
+    bp_types, res_nums1, res_nums2 = extract_bp_type_and_res_num_into_a_table(filename)
+
+    # Read file content
     with open(filename, "r") as file:
         lines = file.readlines()
 
-    start_index = end_index_1 = end_index_2 = None
+    # Initialize variables
+    is_shear_table = False
+    motif_index = None
+    all_data = []
+    j = 0
 
+    # Process each line
     for i, line in enumerate(lines):
-        if start_marker in line:
-            start_index = i
-        if end_marker_1 in line and start_index is not None:
-            end_index_1 = i
-            break
-        elif end_marker_2 in line and start_index is not None:
-            end_index_2 = i
-            break
+        if "Shear    Stretch   Stagger    Buckle  Propeller  Opening" in line:
+            is_shear_table = True
+            continue
+
         if line.startswith("File name:"):
             motif_index = i
 
-    all_data = []
+        if not is_shear_table:
+            continue
 
-    if start_index is not None:
-        if end_index_1 is not None:
-            table_section = lines[start_index + 2 : end_index_1]
-        elif end_index_2 is not None:
-            table_section = lines[start_index + 2 : end_index_2]
-        for j, line in enumerate(table_section):
-            tokens = line[1:].split()
-            res = extract_bp_type_and_res_num_into_a_table(filename)
-            bp = tokens[1][0] + tokens[1][-1]
-            motif = lines[motif_index].split('/')[2]
-            data = {
-                "name": os.path.basename(filename),
-                "motif": motif,
-                "r_type": res[0][j],
-                "res_num1": res[1][j],
-                "res_num2": res[2][j],
-                "bp": bp,
-                "shear": tokens[2],
-                "stretch": tokens[3],
-                "stagger": tokens[4],
-                "buckle": tokens[5],
-                "propeller": tokens[6],
-                "opening": tokens[7],
-            }
-            all_data.append(data)
-        return pd.DataFrame(all_data)
-    else:
-        return pd.DataFrame()
+        match = pattern.search(line)
+        if not match:
+            break
+
+        motif = lines[motif_index].split("/")[2]
+        bp = (
+            re.split(r"[-+]", match.group(2))[0] 
+              + re.split(r"[-+]", match.group(2))[1]
+        )
+
+        data = {
+            "name": os.path.basename(filename),
+            "motif": motif,
+            "r_type": bp_types[j],
+            "res_num1": res_nums1[j],
+            "res_num2": res_nums2[j],
+            "bp": bp,
+            "shear": float(match.group(3)),
+            "stretch": float(match.group(4)),
+            "stagger": float(match.group(5)),
+            "buckle": float(match.group(6)),
+            "propeller": float(match.group(7)),
+            "opening": float(match.group(8)),
+        }
+        all_data.append(data)
+        j += 1
+
+    return pd.DataFrame(all_data)
 
 
 def kabsch_algorithm(P: list, Q: list) -> list:
@@ -1138,7 +1113,7 @@ def process_basepair_details():
             all_tables.append(extracted_table)
 
     combined_df = pd.concat(all_tables, ignore_index=True)
-    combined_df.to_csv(f"{RESOURCE_PATH}/csvs/all_wc_details.csv", index=False)
+    combined_df.to_csv(f"{RESOURCE_PATH}/csvs/all_bp_details.csv", index=False)
     filtered_df = combined_df[combined_df["r_type"] == "WC"].copy()
 
     rmsd = []
@@ -1178,10 +1153,8 @@ def process_basepair_details():
         r_data_list = []
         if key1 in dms_dict:
             r_data_list = dms_dict.get(key1, ["None"])
-            print(f"Key1 found: {key1}, r_data_list: {r_data_list}")
         elif key2 in dms_dict:
             r_data_list = dms_dict.get(key2, ["None"])
-            print(f"Key2 found: {key2}, r_data_list: {r_data_list}")
         else:
             print(f"No match found for {key1} or {key2}, skipping...")
             continue
