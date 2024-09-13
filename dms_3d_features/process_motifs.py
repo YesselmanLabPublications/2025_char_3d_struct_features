@@ -1,13 +1,10 @@
 import glob
-import itertools
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from scipy.stats import ks_2samp, linregress, pearsonr, zscore
 
 from rna_map.mutation_histogram import (
@@ -274,7 +271,7 @@ class GenerateMotifDataFrame:
         return df_motif
 
     def _extract_motif_data(
-        self, row: pd.Series, m_pos: int, m: object
+        self, row: pd.Series, m_pos: int, m: SecStruct
     ) -> Dict[str, Any]:
         """Extract motif data for a single motif."""
         strands = m.strands
@@ -331,15 +328,17 @@ class GenerateMotifDataFrame:
         )
         df_motif["m_orientation"] = "non-flipped"
 
-        # Create a mask to identify motifs that need to be flipped.
-        # A motif needs to be flipped if the length of strand2 is greater than the length of strand1,
-        # or if the lengths are equal and strand2 is lexicographically greater than strand1.
-        flip_mask = (df_motif["strand2"].str.len() > df_motif["strand1"].str.len()) | (
-            (df_motif["strand2"].str.len() == df_motif["strand1"].str.len())
-            & (df_motif["strand2"] > df_motif["strand1"])
-        )
+        flip_mask = [False] * len(df_motif)
+        for i, row in df_motif.iterrows():
+            if len(row["strand2"]) > len(row["strand1"]):
+                flip_mask[i] = True
+            elif (
+                len(row["strand2"]) == len(row["strand1"])
+                and row["strand1"] > row["strand2"]
+            ):
+                flip_mask[i] = True
 
-        df_motif.loc[flip_mask] = df_motif.loc[flip_mask].apply(
+        df_motif.iloc[flip_mask] = df_motif.iloc[flip_mask].apply(
             self._flip_motif, axis=1
         )
 
@@ -460,7 +459,8 @@ class GenerateMotifDataFrame:
 
 # step 3: generate residue dataframes ##############################################
 class GenerateResidueDataFrame:
-    def run(self, df_motif):
+    def run(self, df_motif, name):
+        self.name = name
         df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
         df_residues = self.__expand_residue_dataframe(df_residues_avg)
         df_residues = self.__add_log_data(df_residues)
@@ -491,14 +491,9 @@ class GenerateResidueDataFrame:
 
     def __get_residue_info(self, row, m_sequence, m_structure, i, e, s):
         r_type = "WC" if s in "()" else "NON-WC"
-        p5_res, p3_res = self.__get_neighboring_residues(row, m_sequence, i)
-        p5_type, p3_type = self.__get_residue_types(p5_res, p3_res)
-        both_purine, both_pyrimidine = self.__check_neighboring_types(p5_type, p3_type)
         pdb_r_pos = self.__calculate_pdb_r_pos(i, m_sequence)
 
         return {
-            "both_purine": both_purine,
-            "both_pyrimidine": both_pyrimidine,
             "constructs": row["constructs"],
             "has_pdbs": len(row["pdbs"]) > 0,
             "likely_pair": row["pairs"][i],
@@ -513,10 +508,6 @@ class GenerateResidueDataFrame:
             "m_token": row["m_token"],
             "n_pdbs": len(row["pdbs"]),
             "pair_type": None,
-            "p5_res": p5_res,
-            "p5_type": p5_type,
-            "p3_res": p3_res,
-            "p3_type": p3_type,
             "r_avg": row["m_data_avg"][i],
             "r_cv": row["m_data_cv"][i],
             "r_data": np.array(row["m_data_array"])[:, i].tolist(),
@@ -528,27 +519,6 @@ class GenerateResidueDataFrame:
             "pdb_path": row["pdbs"],
             "pdb_r_pos": pdb_r_pos,
         }
-
-    def __get_neighboring_residues(self, row, m_sequence, i):
-        def get_p5_res(i, m_sequence, row):
-            if i == 0:
-                return row["m_second_flank_bp_5p"][0]
-            elif m_sequence[i - 1] == "_":
-                return row["m_second_flank_bp_3p"][1]
-            else:
-                return m_sequence[i - 1]
-
-        def get_p3_res(i, m_sequence, row):
-            if i == len(m_sequence) - 1:
-                return row["m_second_flank_bp_5p"][1]
-            elif m_sequence[i + 1] == "_":
-                return row["m_second_flank_bp_3p"][0]
-            else:
-                return m_sequence[i + 1]
-
-        p5_res = get_p5_res(i, m_sequence, row)
-        p3_res = get_p3_res(i, m_sequence, row)
-        return p5_res, p3_res
 
     def __get_residue_types(self, p5_res, p3_res):
         p5_type = "PURINE" if p5_res in ["A", "G"] else "PYRIMIDINE" if p5_res else None
@@ -575,10 +545,42 @@ class GenerateResidueDataFrame:
                 all_data.append(data)
         return pd.DataFrame(all_data)
 
+    def __get_neighboring_residues(
+        self, m_sequence, i, m_second_flank_bp_5p, m_second_flank_bp_3p
+    ):
+        def get_p5_res():
+            if i == 0:
+                return m_second_flank_bp_5p[0]
+            elif m_sequence[i - 1] == "&":
+                return m_second_flank_bp_3p[1]
+            else:
+                return m_sequence[i - 1]
+
+        def get_p3_res():
+            if i == len(m_sequence) - 1:
+                return m_second_flank_bp_5p[1]
+            elif m_sequence[i + 1] == "&":
+                return m_second_flank_bp_3p[0]
+            else:
+                return m_sequence[i + 1]
+
+        p5_res = get_p5_res()
+        p3_res = get_p3_res()
+        return p5_res, p3_res
+
     def __create_expanded_row(self, row, i):
+        m_sequence = row["m_sequence"]
+        p5_res, p3_res = self.__get_neighboring_residues(
+            m_sequence,
+            row["r_loc_pos"],
+            row["m_second_flank_bp_5p"][i],
+            row["m_second_flank_bp_3p"][i],
+        )
+        p5_type, p3_type = self.__get_residue_types(p5_res, p3_res)
+        both_purine, both_pyrimidine = self.__check_neighboring_types(p5_type, p3_type)
         return {
-            "both_purine": row["both_purine"],
-            "both_pyrimidine": row["both_pyrimidine"],
+            "both_purine": both_purine,
+            "both_pyrimidine": both_pyrimidine,
             "constructs": row["constructs"][i],
             "has_pdbs": row["has_pdbs"],
             "likely_pair": row["likely_pair"],
@@ -593,15 +595,16 @@ class GenerateResidueDataFrame:
             "m_token": row["m_token"],
             "n_pdbs": row["n_pdbs"],
             "pair_type": None,
-            "p5_res": row["p5_res"],
-            "p5_type": row["p5_type"],
-            "p3_res": row["p3_res"],
-            "p3_type": row["p3_type"],
+            "p5_res": p5_res,
+            "p5_type": p5_type,
+            "p3_res": p3_res,
+            "p3_type": p3_type,
             "r_data": row["r_data"][i],
             "r_nuc": row["r_nuc"],
             "r_loc_pos": row["r_loc_pos"],
             "r_pos": row["r_pos"][i],
             "r_type": row["r_type"],
+            "r_stack": p5_res + p3_res,
             "pdb_path": row["pdb_path"],
             "pdb_r_pos": row["pdb_r_pos"],
         }
@@ -624,13 +627,13 @@ class GenerateResidueDataFrame:
 
     def __save_residues_to_json(self, df_residues):
         df_residues.to_json(
-            f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json",
+            f"{DATA_PATH}/raw-jsons/residues/{self.name}_residues.json",
             orient="records",
         )
 
     def __save_avg_residues_to_json(self, df_residues):
         df_residues.to_json(
-            f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_avg.json",
+            f"{DATA_PATH}/raw-jsons/residues/{self.name}_residues_avg.json",
             orient="records",
         )
 
@@ -661,10 +664,6 @@ def generate_pdb_residue_dataframe(df_residue):
     df_residue.drop(["has_pdbs", "pdb_path", "r_nuc", "r_type"], axis=1, inplace=True)
     df_final = df_pairs.merge(df_residue, on=["m_sequence", "pdb_r_pos"], how="left")
     return df_final
-
-
-def mark_outliers(df_residues):
-    pass
 
 
 def generate_stats(df):
@@ -705,12 +704,12 @@ def generate_stats(df):
 
 
 def regen_data():
-    df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1_combined.json")
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1.json")
     gen = GenerateMotifDataFrame()
-    gen.run(df)
+    gen.run(df, "pdb_library_1")
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
     gen = GenerateResidueDataFrame()
-    gen.run(df)
+    gen.run(df, "pdb_library_1")
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
     df = generate_pdb_residue_dataframe(df)
     df.to_json(
