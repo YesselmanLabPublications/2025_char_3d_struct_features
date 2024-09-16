@@ -397,7 +397,8 @@ def plot_violins_w_percent(
     x: str,
     y: str,
     cutoff=-5.45,
-    color="tab:blue",
+    color="tab:gray",
+    colors=None,
     gt_lt="greater",
     text_offset=2.5,
     xlim=None,
@@ -419,19 +420,34 @@ def plot_violins_w_percent(
     percentages = df.groupby(y).apply(calculate_percentage)
     if sorted_by_mean:
         percentages = percentages.sort_values(ascending=False)
-    sns.violinplot(
-        x=x,
-        y=y,
-        data=df,
-        hue=y if color is None else None,
-        palette=sns.color_palette() if color is None else None,
-        color=color,
-        density_norm="width",
-        ax=ax,
-        linewidth=0.5,
-        order=percentages.index,
-        legend=False,
-    )
+
+    if colors is not None:
+        palette = dict(zip(percentages.index, colors))
+        sns.violinplot(
+            x=x,
+            y=y,
+            data=df,
+            palette=palette,
+            density_norm="width",
+            ax=ax,
+            linewidth=0.5,
+            order=percentages.index,
+            legend=False,
+        )
+    else:
+        sns.violinplot(
+            x=x,
+            y=y,
+            data=df,
+            hue=y if color is None else None,
+            palette=sns.color_palette() if color is None else None,
+            color=color,
+            density_norm="width",
+            ax=ax,
+            linewidth=0.5,
+            order=percentages.index,
+            legend=False,
+        )
     ax.axvline(cutoff, color="black", linestyle="--", linewidth=0.5)
     if xlim is not None:
         ax.set_xlim(xlim)
@@ -452,7 +468,7 @@ def plot_violins_w_percent_groups(
     x_col,
     y_col,
     gt_lt="greater",
-    color="tab:red",
+    color="tab:gray",
     n_panels=2,
     xlim=(-10, 1),
     figsize=(2.0, 1.5),
