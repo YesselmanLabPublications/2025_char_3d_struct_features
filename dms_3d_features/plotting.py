@@ -7,11 +7,10 @@ from typing import List, Union, Optional
 from scipy.stats import ks_2samp, pearsonr, linregress
 from sklearn.linear_model import LinearRegression
 
-
 from rna_secstruct_design.selection import get_selection, SecStruct
 
 from dms_3d_features.logger import get_logger
-import ast
+from dms_3d_features.util import find_stretches
 
 log = get_logger("plotting")
 
@@ -31,7 +30,8 @@ def colors_for_sequence(seq: str) -> List[str]:
         seq (str): A string representing a RNA/DNA sequence.
 
     Returns:
-        List[str]: A list of color strings corresponding to each character in the sequence.
+        List[str]: A list of color strings corresponding to each character in the
+        sequence.
 
     Raises:
         TypeError: If the input is not a string.
@@ -53,59 +53,14 @@ def colors_for_sequence(seq: str) -> List[str]:
             colors.append(color)
         except KeyError as exc:
             log.error(
-                f"Invalid character '{e}' in sequence. Sequence must contain only 'A', 'C', 'G', 'U', 'T', and '&'."
+                "Invalid character '{}' in sequence. Sequence must contain only "
+                "'A', 'C', 'G', 'U', 'T', and '&'.".format(e)
             )
-            raise ValueError(f"Invalid character '{e}' in sequence.") from exc
+            raise ValueError("Invalid character '{}' in sequence.".format(e)) from exc
 
-    log.debug(f"Input Sequence: {seq}")
-    log.debug(f"Output Colors: {colors}")
+    log.debug("Input Sequence: {}".format(seq))
+    log.debug("Output Colors: {}".format(colors))
     return colors
-
-
-def find_stretches(nums: List[int]) -> List[List[int]]:
-    """Finds all consecutive number stretches in a list of integers.
-
-    Args:
-        nums (List[int]): A list of integers that may contain consecutive numbers.
-
-    Returns:
-        List[List[int]]: A list of lists, each containing the start and end of a consecutive number stretch.
-
-    Raises:
-        ValueError: If `nums` contains non-integer elements.
-
-    Example:
-        >>> find_stretches([3, 4, 5, 10, 11, 12])
-        [[3, 5], [10, 12]]
-
-        >>> find_stretches([1, 2, 3, 7, 8, 10])
-        [[1, 3], [7, 8], [10, 10]]
-
-    Notes:
-        The input list is sorted within the function to simplify the logic for finding consecutive stretches.
-    """
-
-    log.debug("Initial list: %s", nums)
-
-    if len(nums) == 0:
-        return []
-
-    nums = sorted(set(nums))
-    log.debug("Sorted and de-duplicated list: %s", nums)
-
-    stretches = []
-    start = end = nums[0]
-
-    for num in nums[1:]:
-        if num == end + 1:
-            end = num
-        else:
-            stretches.append([start, end])
-            start = end = num
-
-    stretches.append([start, end])
-    log.debug("Identified stretches: %s", stretches)
-    return stretches
 
 
 def fill_between(
@@ -133,9 +88,7 @@ def fill_between(
     ax.fill_between(x, y, color=color, alpha=alpha, zorder=-1)
 
 
-def trim(
-    content: Union[str, list], prime_5: int, prime_3: int
-) -> Union[str, list, str]:
+def trim(content: Union[str, list], prime_5: int, prime_3: int) -> Union[str, list]:
     """
     Trims a string or list from the 5' (start) and 3' (end) ends.
 
@@ -145,15 +98,9 @@ def trim(
         prime_3: The number of elements to trim from the 3' end (end).
 
     Returns:
-        A trimmed string or list, or an error message if the content type is invalid.
+        A trimmed string or list.
 
-    Raises:
-        TypeError: If the content is neither a string nor a list.
     """
-    if not isinstance(content, (str, list)):
-        log.error("Invalid content type. Please provide a string or a list.")
-        raise TypeError("Invalid content type. Please provide a string or a list.")
-
     trimmed_content = content[prime_5 : -prime_3 or None]
     log.debug(f"Trimmed content: {trimmed_content}")
     return trimmed_content
@@ -179,13 +126,15 @@ def plot_pop_avg(
         ax: The matplotlib axis to plot on. If not provided,
             a new figure and axis will be created.
         axis: The axis to plot on. Possible values are
-            "sequence_structure", "sequence", or "structure". Defaults to "sequence_structure".
+            "sequence_structure", "sequence", or "structure".
+            Defaults to "sequence_structure".
         trim_5p: The number of nucleotides to trim from the 5' end.
             Defaults to 0.
         trim_3p: The number of nucleotides to trim from the 3' end.
             Defaults to 0.
         highlights: List of highlight regions. Each highlight
-            region should be a tuple of start and end indices. Defaults to None.
+            region should be a tuple of start and end indices.
+            Defaults to None.
 
     Returns:
         The plotted axis.
@@ -225,9 +174,12 @@ def plot_pop_avg_from_row(row, data_col="data", ax=None):
     Plots the population average from a given row of data.
 
     Args:
-        row (pandas.Series): The row of data containing the sequence, structure, and data columns.
-        data_col (str, optional): The name of the column containing the data. Defaults to "data".
-        ax (matplotlib.axes.Axes, optional): The axes on which to plot. Defaults to None.
+        row (pandas.Series): The row of data containing the sequence, structure,
+            and data columns.
+        data_col (str, optional): The name of the column containing the data.
+            Defaults to "data".
+        ax (matplotlib.axes.Axes, optional): The axes on which to plot.
+            Defaults to None.
 
     Returns:
         matplotlib.axes.Axes: The axes object containing the plot.
@@ -237,14 +189,17 @@ def plot_pop_avg_from_row(row, data_col="data", ax=None):
 
 def plot_pop_avg_all(df, data_col="data", axis="sequence_structure", **kwargs):
     """
-    Plots the population average for each row in the given DataFrame. plots are seperated
-    and are in a column format.
+    Plots the population average for each row in the given DataFrame. plots are
+    seperated and are in a column format.
 
     Args:
         df (pandas.DataFrame): The DataFrame containing the data to be plotted.
-        data_col (str, optional): The column name in the DataFrame that contains the data to be plotted. Defaults to "data".
-        axis (str, optional): The axis along which to calculate the population average. Defaults to "sequence_structure".
-        **kwargs: Additional keyword arguments to be passed to the plt.subplots() function.
+        data_col (str, optional): The column name in the DataFrame that contains
+            the data to be plotted. Defaults to "data".
+        axis (str, optional): The axis along which to calculate the population
+            average. Defaults to "sequence_structure".
+        **kwargs: Additional keyword arguments to be passed to the plt.subplots()
+            function.
 
     Returns:
         matplotlib.figure.Figure: The generated figure object.
@@ -267,9 +222,12 @@ def plot_pop_avg_titration(df, titration_col, highlights=None, **kwargs):
 
     Args:
         df (pandas.DataFrame): The DataFrame containing the data to be plotted.
-        titration_col (str): The name of the column in `df` representing the titration values.
-        highlights (list, optional): A list of values to highlight in the plot. Defaults to None.
-        **kwargs: Additional keyword arguments to be passed to the `subplots` function.
+        titration_col (str): The name of the column in `df` representing the
+            titration values.
+        highlights (list, optional): A list of values to highlight in the plot.
+            Defaults to None.
+        **kwargs: Additional keyword arguments to be passed to the `subplots`
+            function.
 
     Returns:
         matplotlib.figure.Figure: The generated figure.
@@ -289,7 +247,7 @@ def plot_pop_avg_titration(df, titration_col, highlights=None, **kwargs):
     for i, row in df.iterrows():
         colors = colors_for_sequence(row["sequence"])
         axes[j].bar(range(0, len(row["data"])), row["data"], color=colors)
-        axes[j].set_title(str(row[titration_col]) + " mM")
+        axes[j].set_title(f"{row[titration_col]} mM")
         axes[j].set_ylim([0, 0.1])
         axes[j].set_xlim([-0.1, len(row["data"]) + 0.1])
         axes[j].set_xticks([])
@@ -399,7 +357,7 @@ def plot_motif_boxplot_stripplot(
     return ax
 
 
-def plot_whole_pdb_reactivity(df: pd.DataFrame, ax=None) -> axes:
+def plot_whole_pdb_reactivity(df: pd.DataFrame, ax=None) -> plt.Axes:
     """
     Plots the whole RNA data points.
 
@@ -434,54 +392,122 @@ def plot_whole_pdb_reactivity(df: pd.DataFrame, ax=None) -> axes:
     return ax
 
 
-def plot_motif_boxplot_stripplot_by_m_pos(df):
-    x, y = 2, 3
-    fig, axes = plt.subplots(x, y, figsize=(10, 5))
-    ylim = df["r_data"].max() + 0.01
-    axes = [axes[i][j] for i in range(x) for j in range(y)]
-    for i, ax in enumerate(axes):
-        df_sub = df.query("m_pos == @i")
-        if len(df_sub) == 0:
-            continue
-        plot_motif_boxplot_stripplot(df_sub, ax=ax)
-        ax.set_title(f"Position {i}")
-        ax.set_ylim(0, ylim)  # TODO figure out what the y limit should be
-
-
-def plot_violinplot_w_percent(
+def plot_violins_w_percent(
     df: pd.DataFrame,
     x: str,
     y: str,
-    cutoff=-5.65,
-    cutoff_color="tab:red",
-    color="tab:blue",
+    cutoff=-5.45,
+    color="tab:gray",
+    colors=None,
     gt_lt="greater",
-    text_pos=-7.75,
+    text_offset=2.5,
+    xlim=None,
     ax=None,
+    sorted_by_mean: bool = False,
 ) -> plt.Axes:
     if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 6))
-    sns.violinplot(x=x, y=y, data=df, color=color, density_norm="width", ax=ax)
-    ax.axvline(cutoff, color=cutoff_color, linestyle="--")
-    count = 0
-    for group_name, g in df.groupby(y):
-        if gt_lt == "greater":
-            percent = (g[x] > cutoff).sum() / len(g)
-        elif gt_lt == "less":
-            percent = (g[x] < cutoff).sum() / len(g)
-        percent *= 100
+        fig, ax = plt.subplots(figsize=(2.0, 1.5), dpi=200)
+
+    # Calculate percentages
+    def calculate_percentage(group):
+        condition = (
+            group["ln_r_data"] > cutoff
+            if gt_lt == "greater"
+            else group["ln_r_data"] < cutoff
+        )
+        return (condition.mean() * 100).round(2)
+
+    percentages = df.groupby(y).apply(calculate_percentage)
+    if sorted_by_mean:
+        percentages = percentages.sort_values(ascending=False)
+
+    if colors is not None:
+        palette = dict(zip(percentages.index, colors))
+        sns.violinplot(
+            x=x,
+            y=y,
+            data=df,
+            palette=palette,
+            density_norm="width",
+            ax=ax,
+            linewidth=0.5,
+            order=percentages.index,
+            legend=False,
+        )
+    else:
+        sns.violinplot(
+            x=x,
+            y=y,
+            data=df,
+            hue=y if color is None else None,
+            palette=sns.color_palette() if color is None else None,
+            color=color,
+            density_norm="width",
+            ax=ax,
+            linewidth=0.5,
+            order=percentages.index,
+            legend=False,
+        )
+    ax.axvline(cutoff, color="black", linestyle="--", linewidth=0.5)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    # Add percentage labels
+    for i, y_value in enumerate(percentages.index):
         ax.text(
-            text_pos,
-            count + 0.020,
-            f"{percent:.2f}%",
+            ax.get_xlim()[0] + text_offset,
+            i + 0.03,
+            f"{percentages[y_value]:.2f}%",
             va="center",
             ha="right",
-            size=20,
-            name="Arial",
         )
-        print(group_name, percent)
-        count += 1
     return ax
+
+
+def plot_violins_w_percent_groups(
+    df,
+    x_col,
+    y_col,
+    gt_lt="greater",
+    color="tab:gray",
+    n_panels=2,
+    xlim=(-10, 1),
+    figsize=(2.0, 1.5),
+    dpi=200,
+    sorted_by_mean: bool = False,
+):
+    df = df.copy()
+    df.sort_values(y_col, inplace=True, ascending=True)
+
+    # Split groups into n_panels
+    groups = df[y_col].unique()
+    group_splits = np.array_split(groups, n_panels)
+    scale_factor = 1.35
+    # Create subplots
+    fig, axes = plt.subplots(
+        1, n_panels, figsize=(figsize[0] * n_panels * scale_factor, figsize[1]), dpi=dpi
+    )
+    if n_panels == 1:
+        axes = [axes]
+
+    for i, (ax, group_split) in enumerate(zip(axes, group_splits)):
+        df_subset = df[df[y_col].isin(group_split)]
+        plot_violins_w_percent(
+            df=df_subset,
+            x=x_col,
+            y=y_col,
+            cutoff=-5.45,
+            color=color,
+            gt_lt=gt_lt,
+            text_offset=1.5 * scale_factor,
+            xlim=xlim,
+            sorted_by_mean=sorted_by_mean,
+            ax=ax,
+        )
+        ax.set_ylabel("Motif Topology", labelpad=2)
+        ax.set_xlabel("ln(Mutation Fraction)", labelpad=2)
+        ax.set_xticks([-10, -8, -6, -4, -2])
+        format_small_plot(ax)
+    return fig, axes
 
 
 def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
