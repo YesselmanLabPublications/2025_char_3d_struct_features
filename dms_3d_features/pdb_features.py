@@ -907,10 +907,7 @@ def extract_basepair_details_into_a_table(filename: str) -> pd.DataFrame:
             break
 
         motif = lines[motif_index].split("/")[2]
-        bp = (
-            re.split(r"[-+]", match.group(2))[0] 
-              + re.split(r"[-+]", match.group(2))[1]
-        )
+        bp = re.split(r"[-+]", match.group(2))[0] + re.split(r"[-+]", match.group(2))[1]
 
         data = {
             "name": os.path.basename(filename),
