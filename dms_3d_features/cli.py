@@ -1,8 +1,8 @@
 import click
 import warnings
 
+from dms_3d_features.sasa import generate_sasa_dataframe
 from dms_3d_features.pdb_features import (
-    compute_solvent_accessibility_all,
     DSSRTorsionFileProcessor,
     calculate_hbond_strength_all,
     process_basepair_details,
@@ -15,22 +15,6 @@ warnings.filterwarnings(
 )
 
 log = get_logger("cli")
-
-
-def compute_sasa():
-    dfs = []
-    for probe_radius in [0.1, 0.25, 0.5, 1.5, 2.0, 2.5, 3.0]:
-        df = compute_solvent_accessibility_all("data/pdbs", probe_radius)
-        probe_radius = str(probe_radius).replace(".", "_")
-        df.rename({"sasa": f"sasa_{probe_radius}"}, axis=1, inplace=True)
-        dfs.append(df)
-    df_final = dfs[0]
-    dfs.pop(0)
-    for df in dfs:
-        df_final = df_final.merge(
-            df, on=["m_sequence", "pdb_r_pos", "pdb_path", "r_nuc"]
-        )
-    df_final.to_csv("data/pdb-features/sasa.csv", index=False)
 
 
 # cli functions #################################################################
@@ -54,15 +38,16 @@ def get_pdb_features():
     """
     setup_logging()
     # get all sasa values for different probe radii
-    # compute_sasa()
+    # df_sasa = generate_sasa_dataframe()
+    # df_sasa.to_csv("data/pdb-features/sasa.csv", index=False)
     # get all hbonds
-    # df_hbonds = calculate_hbond_strength_all("data/pdbs")
-    # df_hbonds.to_csv("data/pdb-features/hbonds.csv", index=False)
+    df_hbonds = calculate_hbond_strength_all("data/pdbs")
+    df_hbonds.to_csv("data/pdb-features/hbonds.csv", index=False)
     # df = calculate_hbond_strength("data/pdbs")
     # calculate_structural_parameters_with_dssr("data/pdbs")
     # df = get_all_torsional_parameters_from_dssr("data/pdbs")
     # df.to_csv("data/pdb-features/torsions.csv", index=False)
-    process_basepair_details()
+    # process_basepair_details()
 
 
 if __name__ == "__main__":
