@@ -1,4 +1,4 @@
-pdb m_sequence,r_nuc,r_loc_pos,a_accessibility,c_accessibility,sasa
+pdb_path,m_sequence,r_nuc,pdb_r_pos,a_accessibility,c_accessibility,sasa
 TWOWAY.3WBM.2-2.GACU-ACCC.0,ACCC_GACU,A,3,2.328212509,0,2.328212509
 TWOWAY.3WBM.2-2.GACU-ACCC.0,ACCC_GACU,C,4,0,0,0
 TWOWAY.3WBM.2-2.GACU-ACCC.0,ACCC_GACU,C,5,0,0,0

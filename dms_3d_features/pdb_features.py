@@ -15,102 +15,6 @@ from dms_3d_features.paths import DATA_PATH
 
 log = get_logger("pdb-features")
 
-# solvent accessibility ##############################################################
-
-
-def compute_solvent_accessibility(
-    pdb_path: str, probe_radius: float = 2.0
-) -> pd.DataFrame:
-    """
-    Computes the solvent accessibility of specific atoms in a nucleic acid structure.
-
-    Args:
-        pdb_path (str): The path to the PDB file.
-        probe_radius (float): The probe radius for SASA calculation. Defaults to 2.0.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing the solvent accessibility information for
-          N1 atoms of A and N3 atoms of C.
-
-    Raises:
-        FileNotFoundError: If the PDB file specified by pdb_path does not exist.
-    """
-    try:
-        ppdb = PandasPdb.PandasPdb().read_pdb(pdb_path)
-    except FileNotFoundError:
-        log.error(f"PDB file not found: {pdb_path}")
-        raise
-
-    ATOM = ppdb.df["ATOM"]
-
-    # Filter for N1 atoms of A and N3 atoms of C
-    mask = ((ATOM["residue_name"] == "A") & (ATOM["atom_name"] == "N1")) | (
-        (ATOM["residue_name"] == "C") & (ATOM["atom_name"] == "N3")
-    )
-    filtered_ATOM = ATOM[mask]
-
-    params = freesasa.Parameters(
-        {"algorithm": freesasa.LeeRichards, "probe-radius": probe_radius}
-    )
-    structure = freesasa.Structure(pdb_path)
-    result = freesasa.calc(structure, params)
-
-    m_sequence = os.path.basename(os.path.dirname(pdb_path)).replace("_", "&")
-
-    all_data = []
-    for _, row in filtered_ATOM.iterrows():
-        selection = freesasa.selectArea(
-            (
-                f"atom, (name {row['atom_name']}) and (resn {row['residue_name']}) and (resi {row['residue_number']})"
-            ),
-            structure,
-            result,
-        )
-
-        data = {
-            "pdb_path": pdb_path,
-            "m_sequence": m_sequence,
-            "r_nuc": row["residue_name"],
-            "pdb_r_pos": row["residue_number"],
-            "sasa": selection["atom"],
-        }
-        all_data.append(data)
-
-    return pd.DataFrame(all_data)
-
-
-def compute_solvent_accessibility_all(
-    pdb_dir: str, probe_radius: float = 2.0
-) -> pd.DataFrame:
-    """
-    Computes the solvent accessibility for all PDB files in a directory.
-
-    Args:
-        pdb_dir (str): The directory containing the PDB files.
-        probe_radius (float, optional): The probe radius for computing solvent accessibility.
-            Defaults to 2.0.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing the computed solvent accessibility values.
-
-    """
-    pdb_paths = glob.glob(f"{pdb_dir}/*/*.pdb")
-    dfs = []
-    for pdb_path in pdb_paths:
-        try:
-            df = compute_solvent_accessibility(pdb_path, probe_radius)
-            dfs.append(df)
-        except Exception as e:
-            log.error(f"Error processing {pdb_path}: {str(e)}")
-
-    if not dfs:
-        log.warning("No PDB files were successfully processed.")
-        return pd.DataFrame()
-
-    df = pd.concat(dfs, ignore_index=True)
-    log.info(f"Processed {len(dfs)} PDB files successfully.")
-    return df
-
 
 # hydrogen bonds #####################################################################
 
@@ -169,7 +73,7 @@ class HbondCalculator:
         motif = os.path.basename(os.path.dirname(pdb_path))
         pdb_name = os.path.basename(pdb_path)
         df_hbonds = self.__extract_hbond_length(pdb_path)
-        atom_df = PandasPdb.PandasPdb().read_pdb(pdb_path).df["ATOM"]
+        atom_df = PandasPdb().read_pdb(pdb_path).df["ATOM"]
 
         pos_data = self.__get_position_data(motif)
         hbond_data = self.__process_hbonds(df_hbonds, atom_df, pos_data, pdb_name)
