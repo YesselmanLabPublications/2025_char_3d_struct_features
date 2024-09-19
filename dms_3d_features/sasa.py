@@ -105,7 +105,7 @@ def compute_solvent_accessibility_all(
 def generate_sasa_dataframe():
     dfs = []
     for probe_radius in [0.1, 0.25, 0.5, 1.5, 2.0, 2.5, 3.0]:
-        df = compute_solvent_accessibility_all("data/pdbs", probe_radius)
+        df = compute_solvent_accessibility_all("data/pdbs_2", probe_radius)
         probe_radius = str(probe_radius).replace(".", "_")
         df.rename({"sasa": f"sasa_{probe_radius}"}, axis=1, inplace=True)
         dfs.append(df)
