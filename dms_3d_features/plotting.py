@@ -553,8 +553,8 @@ def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
 
     # Add R^2 annotation
     ax.text(
-        0.05,
-        0.95,
+        0.03,
+        0.97,
         f"$R^2 = {r_squared:.2f}$",
         transform=ax.transAxes,
         fontsize=12,

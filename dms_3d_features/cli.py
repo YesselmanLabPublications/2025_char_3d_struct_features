@@ -2,9 +2,9 @@ import click
 import warnings
 
 from dms_3d_features.sasa import generate_sasa_dataframe
+from dms_3d_features.hbond import calculate_hbond_strength_all
 from dms_3d_features.pdb_features import (
     DSSRTorsionFileProcessor,
-    calculate_hbond_strength_all,
     process_basepair_details,
 )
 from dms_3d_features.process_motifs import process_mutation_histograms_to_json
@@ -38,8 +38,8 @@ def get_pdb_features():
     """
     setup_logging()
     # get all sasa values for different probe radii
-    # df_sasa = generate_sasa_dataframe()
-    # df_sasa.to_csv("data/pdb-features/sasa.csv", index=False)
+    df_sasa = generate_sasa_dataframe()
+    df_sasa.to_csv("data/pdb-features/sasa.csv", index=False)
     # get all hbonds
     df_hbonds = calculate_hbond_strength_all("data/pdbs")
     df_hbonds.to_csv("data/pdb-features/hbonds.csv", index=False)
