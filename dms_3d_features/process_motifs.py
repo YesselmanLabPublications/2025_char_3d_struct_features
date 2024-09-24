@@ -426,7 +426,8 @@ class GenerateMotifDataFrame:
         pdb_paths = []
 
         for seq_path in [motif_seq_path, rev_motif_seq_path]:
-            path = f"{DATA_PATH}/pdbs/{seq_path}"
+            # be consistent and use pdbs with 2 extra base pairs built by farfar
+            path = f"{DATA_PATH}/pdbs_w_2bp/{seq_path}"
             if os.path.exists(path):
                 pdbs = glob.glob(f"{path}/*.pdb")
                 if pdbs:
@@ -649,7 +650,7 @@ def generate_pdb_residue_dataframe(df_residue):
     df_paths = []
     for i, row in df_pairs.iterrows():
         try:
-            path = glob.glob(f"data/pdbs/*/{row['pdb_name']}")[0]
+            path = glob.glob(f"data/pdbs_w_2bp/*/{row['pdb_name']}")[0]
         except:
             log.info(f"no pdb found for {row['pdb_name']}")
             path = ""
@@ -706,11 +707,14 @@ def generate_stats(df):
 def regen_data():
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1.json")
     gen = GenerateMotifDataFrame()
+    log.info("Generating motif dataframe")
     gen.run(df, "pdb_library_1")
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
+    log.info("Generating residue dataframe")
     gen = GenerateResidueDataFrame()
     gen.run(df, "pdb_library_1")
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
+    log.info("Generating pdb residue dataframe")
     df = generate_pdb_residue_dataframe(df)
     df.to_json(
         f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
