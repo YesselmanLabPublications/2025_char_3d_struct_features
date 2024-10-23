@@ -1,14 +1,18 @@
 import glob
+import concurrent.futures
+from itertools import product
 import numpy as np
 import pandas as pd
 import os
 from typing import List, Dict, Tuple, Optional
 import subprocess
 import shutil
-import glob
 import regex as re
+from biopandas.pdb import PandasPdb
 
 from dms_3d_features.logger import get_logger
+from dms_3d_features.paths import DATA_PATH, RESOURCE_PATH
+from dms_3d_features.stats import r2
 
 log = get_logger("pdb-features")
 
@@ -787,3 +791,392 @@ def process_basepair_details():
 
     df_fin = pd.DataFrame(all_data)
     df_fin.to_json(f"{RESOURCE_PATH}/jsons/wc_details.json", orient="records")
+
+
+## distance #######################################################################
+
+
+def get_coordinates_for_atoms_in_res(df_atom: pd.DataFrame, resi_number: int):
+    atoms_in_residue = df_atom[df_atom["residue_number"] == resi_number]
+    if atoms_in_residue.empty:
+        raise ValueError(f"No atoms found for residue {resi_number}")
+    x_coords = atoms_in_residue["x_coord"].values
+    y_coords = atoms_in_residue["y_coord"].values
+    z_coords = atoms_in_residue["z_coord"].values
+    atom_names = atoms_in_residue["atom_name"].values
+    resi_names = atoms_in_residue["residue_name"].values
+    return x_coords, y_coords, z_coords, atom_names, resi_names
+
+
+def cal_distances_between_all_atom_pairs(
+    x1: list, x2: list, y1: list, y2: list, z1: list, z2: list
+):
+    dist_pairs = []
+    for k1 in range(len(x1)):
+        for k2 in range(len(x2)):
+            distance = np.sqrt(
+                (x2[k2] - x1[k1]) ** 2 + (y2[k2] - y1[k1]) ** 2 + (z2[k2] - z1[k1]) ** 2
+            )
+
+            dist_pairs.append((k1, k2, distance))
+    return dist_pairs
+
+
+def get_distance_between_all_atom_pairs_dataframe(
+    pdb_path: str, max_distance: float = 10
+):
+    try:
+        ppdb = PandasPdb().read_pdb(pdb_path)
+    except FileNotFoundError:
+        log.error(f"PDB file not found: {pdb_path}")
+        raise
+
+    df_atom = ppdb.df["ATOM"]
+    resi_num = df_atom["residue_number"].unique()
+
+    motif = pdb_path.split("/")[-2].split("_")
+
+    all_data = []
+
+    if resi_num[0] != 3:
+        strand_len = len(motif[1])
+    else:
+        strand_len = len(motif[0])
+
+    for i, res1 in enumerate(resi_num[:strand_len]):
+        for j, res2 in enumerate(resi_num[strand_len:]):
+            if res1 == res2:
+                continue
+
+            x1, y1, z1, atom_names1, resi_names1 = get_coordinates_for_atoms_in_res(
+                df_atom, res1
+            )
+            x2, y2, z2, atom_names2, resi_names2 = get_coordinates_for_atoms_in_res(
+                df_atom, res2
+            )
+
+            dist_pairs = cal_distances_between_all_atom_pairs(x1, x2, y1, y2, z1, z2)
+
+            for k1, k2, distance in dist_pairs:
+                if distance > max_distance:
+                    continue
+                if res1 < res2:
+                    data = {
+                        "pdb_name": pdb_path.split("/")[-1],
+                        "res_num1": res1,
+                        "res_name1": resi_names1[k1],
+                        "atom_name1": atom_names1[k1],
+                        "res_num2": res2,
+                        "res_name2": resi_names2[k2],
+                        "atom_name2": atom_names2[k2],
+                        "distance": round(distance, 2),
+                    }
+                else:
+                    data = {
+                        "pdb_name": pdb_path.split("/")[-1],
+                        "res_num1": res2,
+                        "res_name1": resi_names2[k2],
+                        "atom_name1": atom_names2[k2],
+                        "res_num2": res1,
+                        "res_name2": resi_names1[k1],
+                        "atom_name2": atom_names1[k1],
+                        "distance": round(distance, 2),
+                    }
+                all_data.append(data)
+    return pd.DataFrame(all_data)
+
+
+def generate_distance_dataframe(max_distance: float = 10):
+    folders = glob.glob(f"{DATA_PATH}/pdbs/*")
+    all_dfs = []
+    for folder in folders:
+        filenames = glob.glob(f"{folder}/*.pdb")
+        for file in filenames:
+            df = get_distance_between_all_atom_pairs_dataframe(file, max_distance)
+            all_dfs.append(df)
+    final_df = pd.concat(all_dfs, ignore_index=True)
+    return final_df
+
+
+## reactivity correlation with distance ##########################################
+
+
+def calculate_atom_distances(df_pdb, df_dist, r_atom, pair_atom):
+    data = []
+    for i, g in df_pdb.groupby(["pdb_name", "pdb_r_pos"]):
+        row = g.iloc[0]
+        if row["pair_pdb_r_pos"] == -1:
+            continue
+        if row.pdb_r_pos < row.pair_pdb_r_pos:
+            df_sub = df_dist.query(
+                f'pdb_name == "{row.pdb_name}" and '
+                f"res_num1 == {row.pdb_r_pos} and res_num2 == {row.pair_pdb_r_pos} and "
+                f'atom_name1 == "{r_atom}" and atom_name2 == "{pair_atom}"'
+            )
+        else:
+            df_sub = df_dist.query(
+                f'pdb_name == "{row.pdb_name}" and '
+                f"res_num1 == {row.pair_pdb_r_pos} and res_num2 == {row.pdb_r_pos} and "
+                f'atom_name1 == "{pair_atom}" and atom_name2 == "{r_atom}"'
+            )
+        if len(df_sub) == 0:
+            # print("couldnt find distance")
+            continue
+        data.append(
+            {
+                "pdb_name": row.pdb_path,
+                "pdb_r_pos": row.pdb_r_pos,
+                "pair_pdb_r_pos": row.pair_pdb_r_pos,
+                "pdb_r_bp_type": row.pdb_r_bp_type,
+                "distance": df_sub.iloc[0]["distance"],
+                "average_b_factor": row.average_b_factor,
+                "normalized_b_factor": row.normalized_b_factor,
+                "pdb_res": row.pdb_res,
+                "ln_r_data_mean": g["ln_r_data"].mean(),
+                "ln_r_data_std": g["ln_r_data"].std(),
+            }
+        )
+    return pd.DataFrame(data)
+
+
+def process_pair_and_atoms(df_pdb, df_dist, args):
+    p, atom1, atom2 = args
+    df_pdb_pairs = df_pdb.query(
+        f"r_nuc == '{p[0]}' and r_type == 'NON-WC' and pdb_r_pair == '{p}' and no_of_interactions == 1"
+    ).copy()
+    df_pdb_pairs.dropna(
+        subset=["pdb_path", "pdb_r_bp_type", "ln_r_data", "average_b_factor"],
+        inplace=True,
+    )
+    df_dist_pairs = calculate_atom_distances(df_pdb_pairs, df_dist, atom1, atom2)
+    df_dist_pairs["pair"] = p
+    df_dist_pairs["atom1"] = atom1
+    df_dist_pairs["atom2"] = atom2
+    df_dist_pairs["r2"] = r2(df_dist_pairs["distance"], df_dist_pairs["ln_r_data_mean"])
+    return df_dist_pairs
+
+
+def get_all_atom_distances():
+    df_pdb = pd.read_json(
+        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json"
+    )
+    df_dist = pd.read_csv(f"{DATA_PATH}/pdb-features/distances_all.csv")
+    df_bfact = pd.read_csv(f"{DATA_PATH}/pdb-features/b_factor.csv")
+    df_bfact = df_bfact[
+        ["pdb_name", "pdb_r_pos", "average_b_factor", "normalized_b_factor"]
+    ]
+    df_pdb = df_pdb.merge(df_bfact, on=["pdb_name", "pdb_r_pos"], how="left")
+
+    pairs = ["A-G", "A-A", "C-A", "C-C", "C-U"]
+    import multiprocessing
+    from itertools import product
+
+    all_combinations = []
+    for pair in pairs:
+        pair_atoms1 = list(
+            df_dist.query(f"res_name1 == '{pair[0]}'")["atom_name1"].unique()
+        )
+        pair_atoms2 = list(
+            df_dist.query(f"res_name1 == '{pair[2]}'")["atom_name1"].unique()
+        )
+        all_combinations.extend(list(product([pair], pair_atoms1, pair_atoms2)))
+
+    with multiprocessing.Pool(processes=10) as pool:
+        results = pool.starmap(
+            process_pair_and_atoms,
+            [(df_pdb, df_dist, combo) for combo in all_combinations],
+        )
+
+    df_all_results = pd.concat(results, ignore_index=True)
+    df_all_results.to_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances.csv", index=False
+    )
+
+
+def get_non_canonical_atom_distances_reactivity_correlation():
+    df = pd.read_csv(f"{DATA_PATH}/pdb-features/non_canonical_atom_distances.csv")
+    data = []
+    for (pair, atom1, atom2), g in df.groupby(["pair", "atom1", "atom2"]):
+        data.append(
+            {
+                "pair": pair,
+                "atom1": atom1,
+                "atom2": atom2,
+                "count": len(g),
+                "r2": g["r2"].iloc[0],
+            }
+        )
+    pd.DataFrame(data).to_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_correlation.csv",
+        index=False,
+    )
+
+
+## reactivity ratio with distance #################################################
+
+
+def calculate_atom_distances_with_ratio(df, df_dist, r_atom, pair_atom, df_pdb):
+    data_ratio = []
+    seen = []
+    for i, g in df.groupby(["pdb_name", "pdb_r_pos"]):
+        row = g.iloc[0]
+        if row["pair_pdb_r_pos"] == -1:
+            continue
+        if row.pdb_r_pos < row.pair_pdb_r_pos:
+            df_sub = df_dist.query(
+                f'pdb_name == "{row.pdb_name}" and '
+                f"res_num1 == {row.pdb_r_pos} and res_num2 == {row.pair_pdb_r_pos} and "
+                f'atom_name1 == "{r_atom}" and atom_name2 == "{pair_atom}"'
+            )
+        else:
+            df_sub = df_dist.query(
+                f'pdb_name == "{row.pdb_name}" and '
+                f"res_num1 == {row.pair_pdb_r_pos} and res_num2 == {row.pdb_r_pos} and "
+                f'atom_name1 == "{pair_atom}" and atom_name2 == "{r_atom}"'
+            )
+        if len(df_sub) == 0:
+            continue
+
+        key = (row.pdb_name, row.pdb_r_pos, row.pair_pdb_r_pos)
+        partner_key = (row.pdb_name, row.pair_pdb_r_pos, row.pdb_r_pos)
+        if key in seen or partner_key in seen:
+            continue
+        seen.append(key)
+        seen.append(partner_key)
+        partner_g = df_pdb.query(
+            f'pdb_name == "{row.pdb_name}" and pdb_r_pos == {row.pair_pdb_r_pos}'
+        )
+        if len(partner_g) == 0:
+            continue
+        ratio = g["ln_r_data"].mean() / partner_g["ln_r_data"].mean()
+        data_ratio.append(
+            {
+                "pdb_name": row.pdb_path,
+                "pdb_r_pos": row.pdb_r_pos,
+                "pair_pdb_r_pos": row.pair_pdb_r_pos,
+                "distance": df_sub.iloc[0]["distance"],
+                "pdb_res": row.pdb_res,
+                "ratio": ratio,
+            }
+        )
+
+    return pd.DataFrame(data_ratio)
+
+
+def process_pair_and_atoms_with_ratio(df_pdb, df_dist, args):
+    p, atom1, atom2 = args
+    df_pdb_pairs = df_pdb.query(
+        f"r_nuc == '{p[0]}' and r_type == 'NON-WC' and pdb_r_pair == '{p}' and no_of_interactions == 1"
+    ).copy()
+    df_pdb_pairs.dropna(
+        subset=["pdb_path", "pdb_r_bp_type", "ln_r_data", "average_b_factor"],
+        inplace=True,
+    )
+    df_dist_pairs = calculate_atom_distances_with_ratio(
+        df_pdb_pairs, df_dist, atom1, atom2, df_pdb
+    )
+    if len(df_dist_pairs) == 0:
+        return pd.DataFrame()
+    df_dist_pairs["pair"] = p
+    df_dist_pairs["atom1"] = atom1
+    df_dist_pairs["atom2"] = atom2
+    df_dist_pairs["r2"] = r2(df_dist_pairs["distance"], df_dist_pairs["ratio"])
+    return df_dist_pairs
+
+
+def get_all_atom_distances_with_ratio():
+    df_pdb = pd.read_json(
+        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json"
+    )
+    df_dist = pd.read_csv(f"{DATA_PATH}/pdb-features/distances_all.csv")
+    df_bfact = pd.read_csv(f"{DATA_PATH}/pdb-features/b_factor.csv")
+    df_bfact = df_bfact[
+        ["pdb_name", "pdb_r_pos", "average_b_factor", "normalized_b_factor"]
+    ]
+    df_pdb = df_pdb.merge(df_bfact, on=["pdb_name", "pdb_r_pos"], how="left")
+
+    pairs = ["A-A", "C-A", "C-C"]
+    import multiprocessing
+    from itertools import product
+
+    all_combinations = []
+    for pair in pairs:
+        pair_atoms1 = list(
+            df_dist.query(f"res_name1 == '{pair[0]}'")["atom_name1"].unique()
+        )
+        pair_atoms2 = list(
+            df_dist.query(f"res_name1 == '{pair[2]}'")["atom_name1"].unique()
+        )
+        all_combinations.extend(list(product([pair], pair_atoms1, pair_atoms2)))
+
+    with multiprocessing.Pool(processes=10) as pool:
+        results = pool.starmap(
+            process_pair_and_atoms_with_ratio,
+            [(df_pdb, df_dist, combo) for combo in all_combinations],
+        )
+
+    df_all_results = pd.concat(results, ignore_index=True)
+    df_all_results.to_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_with_ratio.csv",
+        index=False,
+    )
+
+
+def get_non_canonical_atom_distances_reactivity_ratio_correlation():
+    df = pd.read_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_with_ratio.csv"
+    )
+    data = []
+    for (pair, atom1, atom2), g in df.groupby(["pair", "atom1", "atom2"]):
+        data.append(
+            {
+                "pair": pair,
+                "atom1": atom1,
+                "atom2": atom2,
+                "count": len(g),
+                "r2": g["r2"].iloc[0],
+            }
+        )
+    pd.DataFrame(data).to_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_ratio_correlation.csv",
+        index=False,
+    )
+
+
+if __name__ == "__main__":
+    df = pd.read_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_correlation.csv"
+    )
+    for i, g in df.groupby("pair"):
+        print(i)
+        g = g.sort_values(by="r2", ascending=False)
+        pair_count = g["count"].max()
+        top_5 = g.head(20)
+        for _, row in top_5.iterrows():
+            print(
+                row["pair"],
+                row["atom1"],
+                row["atom2"],
+                row["r2"],
+                row["count"],
+                pair_count,
+            )
+
+    exit()
+    df = pd.read_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_ratio_correlation.csv"
+    )
+    for i, g in df.groupby("pair"):
+        print(i)
+        g = g.sort_values(by="r2", ascending=False)
+        pair_count = g["count"].max()
+        top_5 = g.head(20)
+        for _, row in top_5.iterrows():
+            print(
+                row["pair"],
+                row["atom1"],
+                row["atom2"],
+                row["r2"],
+                row["count"],
+                pair_count,
+            )

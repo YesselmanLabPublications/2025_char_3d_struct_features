@@ -1,0 +1,11 @@
+strand_1,strand_2,dg,ΔH° (kcal/mol),sym_strand_1,sym_strand_2
+AA,UU,-0.93,–6.82,UU,AA
+AU,UA,-1.10,–9.38,,
+UA,AU,-1.33,–7.69,,
+CU,GA,-2.08,–10.48,AG,UC
+CA,GU,-2.11,–10.44,UG,AC
+GU,CA,-2.24,–11.40,AC,UG
+GA,CU,-2.35,–12.44,UC,AG
+CG,GC,-2.36,–10.64,,
+GG,CC,-3.26,–13.39,CC,GG
+GC,CG,-3.42,–14.88,,

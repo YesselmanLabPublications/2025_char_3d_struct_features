@@ -1,4 +1,5 @@
 import pandas as pd
+from IPython.display import display, HTML
 from tabulate import tabulate
 
 
@@ -69,3 +70,59 @@ def generate_threshold_summary(
     table = tabulate(summary, headers=headers, tablefmt="pipe", floatfmt=".2f")
     print(f"Summary table for {y_column}:")
     print(table)
+
+
+def heatmap_table(
+    df: pd.DataFrame, index_col: str, column_col: str, value_col: str
+) -> None:
+    """
+    Display a heatmap table with mean, standard deviation, and count values.
+
+    This function creates and displays a combined HTML table containing three heatmaps:
+    one for mean values, one for standard deviations, and one for counts. Each heatmap
+    is color-coded using a different colormap.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame containing the data.
+        index_col (str): The name of the column to use as the index for grouping.
+        column_col (str): The name of the column to use for the table columns.
+        value_col (str): The name of the column containing the values to be analyzed.
+
+    Returns:
+        None: Displays the combined heatmap table using IPython's display function.
+    """
+    # Calculate mean, std, and count
+    mean_values = df.groupby([index_col, column_col])[value_col].mean().unstack()
+    std_values = df.groupby([index_col, column_col])[value_col].std().unstack()
+    count_values = df.groupby([index_col, column_col]).size().unstack()
+
+    # Sort index and columns alphabetically
+    for table in [mean_values, std_values, count_values]:
+        table.sort_index(inplace=True)
+        table.sort_index(axis=1, inplace=True)
+
+    # Style the tables
+    mean_styled = mean_values.style.format("{:.1f}").background_gradient(cmap="YlOrRd")
+    std_styled = std_values.style.format("{:.2f}").background_gradient(cmap="Greens")
+    count_styled = count_values.style.format("{:.0f}").background_gradient(cmap="Blues")
+
+    # Combine tables horizontally
+    combined_html = f"""
+    <div style="display: flex; justify-content: space-around;">
+        <div>
+            <h3>Mean</h3>
+            {mean_styled.to_html()}
+        </div>
+        <div>
+            <h3>Std Dev</h3>
+            {std_styled.to_html()}
+        </div>
+        <div>
+            <h3>Count</h3>
+            {count_styled.to_html()}
+        </div>
+    </div>
+    """
+
+    # Display the combined table
+    display(HTML(combined_html))
