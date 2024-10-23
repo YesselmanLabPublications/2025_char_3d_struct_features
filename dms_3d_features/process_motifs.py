@@ -641,12 +641,26 @@ class GenerateResidueDataFrame:
 
 # step 4: merge pdb info into motif and residue dataframes ##########################
 def generate_pdb_residue_dataframe(df_residue):
+    # this stores what type of non-wc bair each residue is part of
     df_pairs = pd.read_csv(
         f"dms_3d_features/resources/csvs/basepair_data_for_motifs.csv"
     )
+    # describes which residues are in a pair
+    df_pair_info = pd.read_csv(f"dms_3d_features/resources/csvs/all_bp_details.csv")
+    df_pair_info = df_pair_info[["name", "motif", "res_num1", "res_num2", "bp"]]
+    df_pair_info["name"] = df_pair_info["name"].str.replace("_x3dna.out", "")
+    df_pair_info.rename(columns={"name": "pdb_name"}, inplace=True)
+    df_pair_info["pdb_name"] = df_pair_info["pdb_name"] + ".pdb"
+    # gives the resolution of each pdb
     df_res = pd.read_csv(f"dms_3d_features/resources/csvs/pdb_res.csv")
     df_res.drop(["m_sequence"], axis=1, inplace=True)
     df_res["pdb_name"] = [x + ".pdb" for x in df_res["pdb_name"]]
+    # gives the b-factor of each residue
+    df_bfact = pd.read_csv(f"data/pdb-features/b_factor.csv")
+    df_bfact = df_bfact[
+        ["pdb_name", "pdb_r_pos", "average_b_factor", "normalized_b_factor"]
+    ]
+    # get the paths for each pdb
     df_paths = []
     for i, row in df_pairs.iterrows():
         try:
@@ -657,6 +671,7 @@ def generate_pdb_residue_dataframe(df_residue):
         df_paths.append(path)
     df_pairs["pdb_path"] = df_paths
     df_pairs = df_pairs.merge(df_res, on="pdb_name")
+    # df_pairs = df_pairs.merge(df_bfact, on=["pdb_name", "pdb_r_pos"])
     df_pairs.to_csv("data/pdb-features/pairs.csv", index=False)
     df_residue = df_residue.query("has_pdbs == True").copy()
     df_residue["m_sequence"] = df_residue["m_sequence"].apply(
@@ -664,6 +679,28 @@ def generate_pdb_residue_dataframe(df_residue):
     )
     df_residue.drop(["has_pdbs", "pdb_path", "r_nuc", "r_type"], axis=1, inplace=True)
     df_final = df_pairs.merge(df_residue, on=["m_sequence", "pdb_r_pos"], how="left")
+    df_final["pair_pdb_r_pos"] = -1
+    # TODO need to understand why some are not being found is it just because they are not in the 3dna output? or like the multiple iteraction thing?
+    for i, row in df_final.iterrows():
+        if "lone" in row["pdb_r_bp_type"]:
+            continue
+        df_sub = df_pair_info.query(
+            f"pdb_name == '{row['pdb_name']}' and res_num1 == {row['pdb_r_pos']}"
+        )
+        if len(df_sub) == 1:
+            df_final.loc[i, "pair_pdb_r_pos"] = df_sub["res_num2"].values[0]
+        elif len(df_sub) == 0:
+            df_sub = df_pair_info.query(
+                f"pdb_name == '{row['pdb_name']}' and res_num2 == {row['pdb_r_pos']}"
+            )
+            if len(df_sub) == 1:
+                df_final.loc[i, "pair_pdb_r_pos"] = df_sub["res_num1"].values[0]
+            else:
+                continue
+                # print(row["pdb_r_bp_type"], row["pdb_path"], row["pdb_r_pos"])
+        else:
+            continue
+            # print(row["pdb_r_bp_type"], row["pdb_path"], row["pdb_r_pos"]
     return df_final
 
 
@@ -727,7 +764,15 @@ def main():
     main function for script
     """
     setup_logging()
-    regen_data()
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
+    log.info("Generating pdb residue dataframe")
+    df = generate_pdb_residue_dataframe(df)
+    df.to_json(
+        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
+        orient="records",
+    )
+
+    # regen_data()
 
 
 if __name__ == "__main__":
