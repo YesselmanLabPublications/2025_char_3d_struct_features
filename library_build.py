@@ -7,7 +7,6 @@ from vienna import fold
 
 df = pd.read_csv('motif_sequences.csv')
 pool = []
-pool_ss = []
 pool_motifs = []
 pool_m_ss = []
 usable_seq = []
@@ -122,10 +121,9 @@ for i in range(7500):
     if full_ss == full_ss_RNAfold:
         pool.append(full_seq)
         pool_motifs.append(selected_motif)
-        pool_ss.append(selected_ss)
         pool_m_ss.append(selected_ss)
 
-for i, (p1, ss1, m1, s1) in enumerate(zip(pool, pool_ss, pool_motifs, pool_m_ss)):
+for i, (p1, m1, s1) in enumerate(zip(pool, pool_motifs, pool_m_ss)):
     folded_p1 = fold(p1)  # Store the result of fold(p1)
     ens_defect_p1 = folded_p1.ens_defect
 
@@ -137,7 +135,6 @@ for i, (p1, ss1, m1, s1) in enumerate(zip(pool, pool_ss, pool_motifs, pool_m_ss)
                 usable_motifs.append(m1)
                 usable_m_ss.append(s1)
                 usable_seq.append(p1)
-                usable_act_ss.append(ss1)
                 usable_ss.append(folded_p1.dot_bracket)
                 s_len = len(p1)
                 seq_len.append(s_len)
@@ -148,7 +145,6 @@ for i, (p1, ss1, m1, s1) in enumerate(zip(pool, pool_ss, pool_motifs, pool_m_ss)
 df_final = pd.DataFrame()
 df_final['seq'] = usable_seq
 df_final['ss'] = usable_ss
-df_final['actual_ss'] = usable_act_ss
 df_final['motifs'] = usable_motifs
 df_final['motifs_ss'] = usable_m_ss
 df_final['len'] = seq_len
