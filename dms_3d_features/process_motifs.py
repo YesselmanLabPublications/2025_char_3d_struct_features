@@ -252,8 +252,19 @@ class GenerateMotifDataFrame:
         self.name = name
         df_filtered = df.query("num_aligned > 2000 and sn > 4.0")
         df_motif = self._create_motif_dataframe(df_filtered)
-        df_motif_standardized = self._standardize_motifs(df_motif)
-        df_motif_avg = self._calculate_average_motif_data(df_motif_standardized)
+        df_motif_helix = self.__create_helix_motif_dataframe(df_filtered)
+        dfs = [df_motif, df_motif_helix]
+        df_motif_concat = pd.concat(dfs).reset_index(drop=True)
+        df_motif_concat.to_json(
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs_concat.json",
+            orient="records",
+        )
+        df_motif_concat_standardized = self._standardize_motifs(df_motif_concat)
+        df_motif_concat_standardized.to_json(
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs_standard.json",
+            orient="records",
+        )
+        df_motif_avg = self._calculate_average_motif_data(df_motif_concat_standardized)
         return df_motif_avg
 
     def _create_motif_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -293,6 +304,72 @@ class GenerateMotifDataFrame:
             "num_aligned": row["num_aligned"],
             "sn": row["sn"],
         }
+
+    def __create_helix_motif_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create the initial motif dataframe from the input dataframe.
+
+        Args:
+            df (pd.DataFrame): The input dataframe containing sequence and structure data.
+
+        Returns:
+            pd.DataFrame: The initial motif dataframe.
+        """
+        all_data = []
+        for _, row in df.iterrows():
+            ss = SecStruct(row["sequence"], row["structure"])
+            for j, m in enumerate(ss.get_helices()):
+                all_data.append(self.__get_helix_data(m, row, j))
+        df_motif = pd.DataFrame(all_data)
+        df_motif.to_json(
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_helix.json", orient="records"
+        )
+        return df_motif
+
+    def __get_helix_data(self, m, row, m_pos) -> Dict[str, Any]:
+        """
+        Get the motif data for a given motif and construct row.
+
+        Args:
+            m (Motif): The motif object.
+            row (pd.Series): The row containing the sequence, data, and name.
+            m_pos (int): The position of the motif.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the motif data.
+        """
+        strands = m.strands
+        # TODO rename these to make sense
+        second_bp = [strands[0][-1], strands[1][0]]
+        second_bp_id = row["sequence"][second_bp[0]] + row["sequence"][second_bp[1]]
+        flank_bp_5p = row["sequence"][strands[0][0]] + row["sequence"][strands[1][-1]]
+        flank_bp_3p = row["sequence"][strands[0][-2]] + row["sequence"][strands[1][1]]
+        m_data = []
+        m_strands = strands[0][:-1] + [-1] + strands[1][1:]
+        for pos in m_strands:
+            if pos == -1:
+                m_data.append(0)
+            else:
+                m_data.append(round(row["data"][pos], 6))
+        seqs = m.sequence.split("&")
+        ss = m.structure.split("&")
+        token = "HELIX." + str(len(seqs[0]))
+        data = {
+            "constructs": row["name"],  # name of the construct
+            "m_data": m_data,  # reactivity for the motif
+            "m_pos": m_pos,  # position of the motif 0 to 7?
+            "m_sequence": seqs[0][:-1] + "&" + seqs[1][1:],  # sequence of the motif
+            "m_structure": ss[0][:-1] + "&" + ss[1][1:],  # structure of the motif
+            "m_strands": m_strands,  # positions of each nuclotide of the motif
+            "m_token": token,
+            "m_flank_bp_5p": flank_bp_5p,  # base pair at the 5' end of the motif
+            "m_flank_bp_3p": flank_bp_3p,  # base pair at the 3' end of the motif
+            "m_second_flank_bp_5p": "N/A",  # first base pair of the motif before flanking
+            "m_second_flank_bp_3p": second_bp_id,  # second base pair of the motif after flanking
+            "num_aligned": row["num_aligned"],  # number of aligned reads
+            "sn": row["sn"],  # signal to noise ratio
+        }
+        return data
 
     def _get_flanking_base_pairs(
         self, row: pd.Series, strands: List[List[int]]
@@ -343,10 +420,6 @@ class GenerateMotifDataFrame:
         )
 
         df_motif = df_motif.drop(columns=["strand1", "strand2"])
-        df_motif.to_json(
-            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs_standard.json",
-            orient="records",
-        )
         return df_motif
 
     def _flip_motif(self, row: pd.Series) -> pd.Series:
@@ -358,7 +431,8 @@ class GenerateMotifDataFrame:
             row["m_strands"][len_s1 + 1 :] + [-1] + row["m_strands"][:len_s1]
         )
         row["m_data"] = row["m_data"][len_s1 + 1 :] + [0] + row["m_data"][:len_s1]
-        row["m_token"] = row["m_token"][::-1]
+        if not row["m_token"].startswith("HELIX"):
+            row["m_token"] = row["m_token"][::-1]
         row["m_flank_bp_5p"], row["m_flank_bp_3p"] = self._flip_pair(
             row["m_flank_bp_3p"]
         ), self._flip_pair(row["m_flank_bp_5p"])
@@ -491,8 +565,13 @@ class GenerateResidueDataFrame:
         return residue_data
 
     def __get_residue_info(self, row, m_sequence, m_structure, i, e, s):
-        r_type = "WC" if s in "()" else "NON-WC"
-        pdb_r_pos = self.__calculate_pdb_r_pos(i, m_sequence)
+        r_type = "Flank-WC" if s in "()" else "NON-WC"
+        # helix motifs aren't associated with a pdb
+        if row["m_token"].startswith("HELIX"):
+            pdb_r_pos = -1
+            r_type = "WC"
+        else:
+            pdb_r_pos = self.__calculate_pdb_r_pos(i, m_sequence)
 
         return {
             "constructs": row["constructs"],
@@ -764,15 +843,7 @@ def main():
     main function for script
     """
     setup_logging()
-    df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
-    log.info("Generating pdb residue dataframe")
-    df = generate_pdb_residue_dataframe(df)
-    df.to_json(
-        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
-        orient="records",
-    )
-
-    # regen_data()
+    regen_data()
 
 
 if __name__ == "__main__":
