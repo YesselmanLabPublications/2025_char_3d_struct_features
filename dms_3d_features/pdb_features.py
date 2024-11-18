@@ -1037,8 +1037,8 @@ def calculate_atom_distances_with_ratio(df, df_dist, r_atom, pair_atom, df_pdb):
         if len(df_sub) == 0:
             continue
 
-        key = (row.pdb_name, row.pdb_r_pos, row.pair_pdb_r_pos)
-        partner_key = (row.pdb_name, row.pair_pdb_r_pos, row.pdb_r_pos)
+        key = (row.pdb_name, row.pdb_r_pos, row.pair_pdb_r_pos, r_atom)
+        partner_key = (row.pdb_name, row.pair_pdb_r_pos, row.pdb_r_pos, pair_atom)
         if key in seen or partner_key in seen:
             continue
         seen.append(key)
@@ -1144,7 +1144,7 @@ def get_non_canonical_atom_distances_reactivity_ratio_correlation():
 
 
 if __name__ == "__main__":
-    df = pd.read_csv(
+    """df = pd.read_csv(
         f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_correlation.csv"
     )
     for i, g in df.groupby("pair"):
@@ -1161,7 +1161,9 @@ if __name__ == "__main__":
                 row["count"],
                 pair_count,
             )
-
+    """
+    get_all_atom_distances_with_ratio()
+    get_non_canonical_atom_distances_reactivity_ratio_correlation()
     exit()
     df = pd.read_csv(
         f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_ratio_correlation.csv"
