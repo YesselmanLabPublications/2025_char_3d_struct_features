@@ -250,7 +250,11 @@ class GenerateMotifDataFrame:
             pd.DataFrame: Processed dataframe with average motif data.
         """
         self.name = name
+        log.info(f"Processing {name} with {len(df)} rows")
         df_filtered = df.query("num_aligned > 2000 and sn > 4.0")
+        log.info(
+            f"removed {len(df) - len(df_filtered)} rows with num_aligned <= 2000 or sn <= 4.0"
+        )
         df_motif = self._create_motif_dataframe(df_filtered)
         df_motif_helix = self.__create_helix_motif_dataframe(df_filtered)
         dfs = [df_motif, df_motif_helix]
