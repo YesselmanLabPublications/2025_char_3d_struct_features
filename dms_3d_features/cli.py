@@ -1,5 +1,7 @@
 import click
 import warnings
+import pandas as pd
+import os
 
 from dms_3d_features.sasa import generate_sasa_dataframe
 from dms_3d_features.hbond import calculate_hbond_strength_all
@@ -8,8 +10,14 @@ from dms_3d_features.pdb_features import (
     process_basepair_details,
     generate_distance_dataframe,
 )
-from dms_3d_features.process_motifs import process_mutation_histograms_to_json
+from dms_3d_features.process_motifs import (
+    process_mutation_histograms_to_json,
+    GenerateMotifDataFrame,
+    GenerateResidueDataFrame,
+    generate_pdb_residue_dataframe,
+)
 from dms_3d_features.logger import setup_logging, get_logger
+from dms_3d_features.paths import DATA_PATH
 
 warnings.filterwarnings(
     "ignore", message="FreeSASA: warning: Found no matches to resn 'A', typo?"
@@ -32,7 +40,36 @@ def generate_motif_data():
     Takes raw mutation histograms from RNA-MaP and generates a JSON file with motif data.
     """
     setup_logging()
+
+    # Check paths exist
+    required_paths = [
+        f"{DATA_PATH}/raw-jsons/constructs",
+        f"{DATA_PATH}/raw-jsons/motifs",
+        f"{DATA_PATH}/raw-jsons/residues",
+    ]
+    for path in required_paths:
+        if not os.path.exists(path):
+            raise ValueError(f"Required directory {path} does not exist")
+
     process_mutation_histograms_to_json()
+    construct_file = f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1.json"
+    df = pd.read_json(construct_file)
+    gen = GenerateMotifDataFrame()
+    log.info("Generating motif dataframe")
+    gen.run(df, "pdb_library_1")
+    motif_file = f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json"
+    df = pd.read_json(motif_file)
+    log.info("Generating residue dataframe")
+    gen = GenerateResidueDataFrame()
+    gen.run(df, "pdb_library_1")
+    residue_file = f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json"
+    df = pd.read_json(residue_file)
+    log.info("Generating pdb residue dataframe")
+    df = generate_pdb_residue_dataframe(df)
+    df.to_json(
+        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
+        orient="records",
+    )
 
 
 @cli.command()
