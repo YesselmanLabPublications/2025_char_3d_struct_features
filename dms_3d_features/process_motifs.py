@@ -1,12 +1,15 @@
+# Standard library imports
+from concurrent.futures import ThreadPoolExecutor
 import glob
 import os
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Tuple
 
+# Third party imports
 import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp, linregress, pearsonr, zscore
 
+# Yesselman lab imports
 from rna_map.mutation_histogram import (
     convert_dreem_mut_histos_to_mutation_histogram,
     get_dataframe,
@@ -16,14 +19,10 @@ from rna_secstruct import SecStruct
 from seq_tools import SequenceStructure, fold, has_5p_sequence, to_rna
 from seq_tools.structure import find as seq_ss_find
 
+# Local imports
 from dms_3d_features.logger import get_logger, setup_logging
-from dms_3d_features.plotting import colors_for_sequence, plot_pop_avg_from_row
+from dms_3d_features.paths import DATA_PATH, RESOURCES_PATH
 
-# assume data/ is location of data
-# assume data/mutation-histograms/ is location of mutation histograms
-
-RESOURCES_PATH = "dms_3d_features/resources"
-DATA_PATH = "data"
 
 log = get_logger("process-motifs")
 
@@ -188,7 +187,15 @@ def process_mutation_histograms_to_json():
     Returns:
         None
     """
-    pickle_files = glob.glob("data/mutation-histograms/*.p")
+    log.info("Processing mutation histograms")
+    if not os.path.isdir(f"{DATA_PATH}/mutation-histograms"):
+        raise ValueError(
+            f"{DATA_PATH}/mutation-histograms directory does not exist, please download our data from FigShare"
+        )
+    log.info(
+        f"Found {len(glob.glob(DATA_PATH + '/mutation-histograms/*.p'))} pickle files"
+    )
+    pickle_files = glob.glob(f"{DATA_PATH}/mutation-histograms/*.p")
     cols = [
         "name",
         "sequence",
@@ -207,7 +214,7 @@ def process_mutation_histograms_to_json():
 
     for pfile in pickle_files:
         name = os.path.splitext(os.path.basename(pfile))[0]
-        output_file = f"data/raw-jsons/constructs/{name}.json"
+        output_file = f"{DATA_PATH}/raw-jsons/constructs/{name}.json"
 
         if os.path.isfile(output_file):
             log.info(f"Skipping {name}: Output file already exists")
