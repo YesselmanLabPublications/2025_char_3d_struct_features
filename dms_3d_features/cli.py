@@ -27,7 +27,10 @@ def cli():
 
 
 @cli.command()
-def process_mutation_histograms():
+def generate_motif_data():
+    """
+    Takes raw mutation histograms from RNA-MaP and generates a JSON file with motif data.
+    """
     setup_logging()
     process_mutation_histograms_to_json()
 
