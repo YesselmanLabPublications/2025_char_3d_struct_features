@@ -1,4 +1,7 @@
 # standard libraries
+biopandas
 click
-pytest
 freesasa
+pandas
+pytest
+regex
