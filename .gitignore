@@ -1,7 +1,9 @@
+build
+*egg-info*
+not_in_repo
 .vscode/
 data/
 plots/
-notebooks/figures/pngs/
 figures/
 *.pyc
 .DS_Store
