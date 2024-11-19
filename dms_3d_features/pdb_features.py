@@ -469,7 +469,7 @@ def process_basepair_details():
             all_data.append(data)
 
     df_fin = pd.DataFrame(all_data)
-    df_fin.to_json(f"{RESOURCE_PATH}/jsons/wc_details.json", orient="records")
+    df_fin.to_csv(f"{RESOURCE_PATH}/jsons/wc_details.csv", index=False)
 
 
 ## distance #######################################################################
