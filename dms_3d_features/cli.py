@@ -6,7 +6,6 @@ import os
 from dms_3d_features.sasa import generate_sasa_dataframe
 from dms_3d_features.hbond import calculate_hbond_strength_all
 from dms_3d_features.pdb_features import (
-    DSSRTorsionFileProcessor,
     process_basepair_details,
     generate_distance_dataframe,
 )
@@ -78,22 +77,16 @@ def get_pdb_features():
     Get the solvent accessibility features for all PDB files in the pdbs directory.
     """
     setup_logging()
-
     df = generate_distance_dataframe(max_distance=10)
-    df.to_csv("data/pdb-features/distances_10a.csv", index=False)
+    df.to_csv(f"{DATA_PATH}/pdb-features/distances_10a.csv", index=False)
     df = generate_distance_dataframe(max_distance=1000)
-    df.to_csv("data/pdb-features/distances_all.csv", index=False)
+    df.to_csv(f"{DATA_PATH}/pdb-features/distances_all.csv", index=False)
     exit(0)
     # get all sasa values for different probe radii
     df_sasa = generate_sasa_dataframe()
     df_sasa.to_csv("data/pdb-features/sasa.csv", index=False)
     # get all hbonds
-    df_hbonds = calculate_hbond_strength_all("data/pdbs")
-    df_hbonds.to_csv("data/pdb-features/hbonds.csv", index=False)
-    # df = calculate_hbond_strength("data/pdbs")
-    # calculate_structural_parameters_with_dssr("data/pdbs")
-    # df = get_all_torsional_parameters_from_dssr("data/pdbs")
-    # df.to_csv("data/pdb-features/torsions.csv", index=False)
+
     # process_basepair_details()
 
 
