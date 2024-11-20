@@ -11,7 +11,7 @@ import regex as re
 from biopandas.pdb import PandasPdb
 
 from dms_3d_features.logger import get_logger
-from dms_3d_features.paths import DATA_PATH, RESOURCE_PATH
+from dms_3d_features.paths import DATA_PATH
 from dms_3d_features.stats import r2
 
 log = get_logger("pdb-features")
@@ -347,7 +347,7 @@ def calculate_rmsd_bp(bp: str, filename: str, resi_nums: list) -> float:
     }
 
     try:
-        ppdb_ideal = PandasPdb().read_pdb(f"{RESOURCE_PATH}/ideal_pdbs/{bp}.pdb")
+        ppdb_ideal = PandasPdb().read_pdb(f"{DATA_PATH}/ideal_pdbs/{bp}.pdb")
         ideal_df = ppdb_ideal.df["ATOM"]
         ppdb_pdb = PandasPdb().read_pdb(filename)
         pdb_df = ppdb_pdb.df["ATOM"]
@@ -387,7 +387,7 @@ def process_basepair_details():
             all_tables.append(extracted_table)
 
     combined_df = pd.concat(all_tables, ignore_index=True)
-    combined_df.to_csv(f"{RESOURCE_PATH}/csvs/all_bp_details.csv", index=False)
+    combined_df.to_csv(f"{DATA_PATH}/csvs/all_bp_details.csv", index=False)
     filtered_df = combined_df[combined_df["r_type"] == "WC"].copy()
 
     rmsd = []
@@ -405,7 +405,7 @@ def process_basepair_details():
         rmsd.append(rmsd_val)
 
     filtered_df["rmsd"] = rmsd
-    filtered_df.to_csv(f"{RESOURCE_PATH}/csvs/wc_with_rmsd.csv", index=False)
+    filtered_df.to_csv(f"{DATA_PATH}/csvs/wc_with_rmsd.csv", index=False)
     df_all = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
 
     dms_dict = {}
@@ -469,7 +469,7 @@ def process_basepair_details():
             all_data.append(data)
 
     df_fin = pd.DataFrame(all_data)
-    df_fin.to_csv(f"{RESOURCE_PATH}/csvs/wc_details.csv", index=False)
+    df_fin.to_csv(f"{DATA_PATH}/csvs/wc_details.csv", index=False)
 
 
 ## distance #######################################################################
