@@ -823,41 +823,7 @@ def get_non_canonical_atom_distances_reactivity_ratio_correlation():
 
 
 if __name__ == "__main__":
-    """df = pd.read_csv(
-        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_correlation.csv"
-    )
-    for i, g in df.groupby("pair"):
-        print(i)
-        g = g.sort_values(by="r2", ascending=False)
-        pair_count = g["count"].max()
-        top_5 = g.head(20)
-        for _, row in top_5.iterrows():
-            print(
-                row["pair"],
-                row["atom1"],
-                row["atom2"],
-                row["r2"],
-                row["count"],
-                pair_count,
-            )
-    """
+
     get_all_atom_distances_with_ratio()
     get_non_canonical_atom_distances_reactivity_ratio_correlation()
     exit()
-    df = pd.read_csv(
-        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_ratio_correlation.csv"
-    )
-    for i, g in df.groupby("pair"):
-        print(i)
-        g = g.sort_values(by="r2", ascending=False)
-        pair_count = g["count"].max()
-        top_5 = g.head(20)
-        for _, row in top_5.iterrows():
-            print(
-                row["pair"],
-                row["atom1"],
-                row["atom2"],
-                row["r2"],
-                row["count"],
-                pair_count,
-            )
