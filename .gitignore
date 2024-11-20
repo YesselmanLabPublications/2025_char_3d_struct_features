@@ -4,7 +4,6 @@ not_in_repo
 .vscode/
 data/
 plots/
-figures/
 *.pyc
 .DS_Store
 __pycache__/
