@@ -21,7 +21,7 @@ from seq_tools.structure import find as seq_ss_find
 
 # Local imports
 from dms_3d_features.logger import get_logger, setup_logging
-from dms_3d_features.paths import DATA_PATH, RESOURCE_PATH
+from dms_3d_features.paths import DATA_PATH
 
 
 log = get_logger("process-motifs")
@@ -97,7 +97,7 @@ def trim_p5_and_p3(df: pd.DataFrame, is_rna=True) -> pd.DataFrame:
         ValueError: If no common p5 sequence is found or the sequence is not
             registered in the CSV file.
     """
-    df_p5 = pd.read_csv(f"{RESOURCE_PATH}/csvs/p5_sequences.csv")
+    df_p5 = pd.read_csv(f"{DATA_PATH}/csvs/p5_sequences.csv")
     if is_rna:
         df_p5 = to_rna(df_p5)
     common_p5_seq = ""
@@ -732,15 +732,15 @@ class GenerateResidueDataFrame:
 # step 4: merge pdb info into motif and residue dataframes ##########################
 def generate_pdb_residue_dataframe(df_residue):
     # this stores what type of non-wc bair each residue is part of
-    df_pairs = pd.read_csv(f"{RESOURCE_PATH}/csvs/basepair_data_for_motifs.csv")
+    df_pairs = pd.read_csv(f"{DATA_PATH}/csvs/basepair_data_for_motifs.csv")
     # describes which residues are in a pair
-    df_pair_info = pd.read_csv(f"{RESOURCE_PATH}/csvs/all_bp_details.csv")
+    df_pair_info = pd.read_csv(f"{DATA_PATH}/csvs/all_bp_details.csv")
     df_pair_info = df_pair_info[["name", "motif", "res_num1", "res_num2", "bp"]]
     df_pair_info["name"] = df_pair_info["name"].str.replace("_x3dna.out", "")
     df_pair_info.rename(columns={"name": "pdb_name"}, inplace=True)
     df_pair_info["pdb_name"] = df_pair_info["pdb_name"] + ".pdb"
     # gives the resolution of each pdb
-    df_res = pd.read_csv(f"{RESOURCE_PATH}/csvs/pdb_res.csv")
+    df_res = pd.read_csv(f"{DATA_PATH}/csvs/pdb_res.csv")
     df_res.drop(["m_sequence"], axis=1, inplace=True)
     df_res["pdb_name"] = [x + ".pdb" for x in df_res["pdb_name"]]
     # gives the b-factor of each residue
