@@ -6,14 +6,10 @@ By D. H. Sanduni Deenalattha, Chris P. Jurich, Bret Lange, Darren Armstrong, Kai
 Contact: jyesselm@unl.edu
 
 
-
-## data to download 
-```
-pip install gdown
-
-gdown 1gRM9-VRJIRHwod36W1FQByfl0V1uhyQN
-```
-## install code
+## Data Download
+Make sure to download the data used in this project from [XXX](XXX). Unzip this data and store it in the `data/` directory within the current project directory.
+`
+## Installation
 ```
 pip install . 
 ```
