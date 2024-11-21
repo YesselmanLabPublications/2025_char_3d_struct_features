@@ -4,7 +4,6 @@ import pandas as pd
 import os
 
 from dms_3d_features.sasa import generate_sasa_dataframe
-from dms_3d_features.hbond import calculate_hbond_strength_all
 from dms_3d_features.pdb_features import (
     process_basepair_details,
     generate_distance_dataframe,
