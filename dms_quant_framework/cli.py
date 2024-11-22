@@ -73,20 +73,19 @@ def generate_motif_data():
 @cli.command()
 def get_pdb_features():
     """
-    Get the solvent accessibility features for all PDB files in the pdbs directory.
+    Get pdb features for all PDB files in the pdbs directory.
     """
     setup_logging()
-    df = generate_distance_dataframe(max_distance=10)
-    df.to_csv(f"{DATA_PATH}/pdb-features/distances_10a.csv", index=False)
+    # get all distances for different max distances
+    log.info("Getting all distances")
     df = generate_distance_dataframe(max_distance=1000)
     df.to_csv(f"{DATA_PATH}/pdb-features/distances_all.csv", index=False)
-    exit(0)
     # get all sasa values for different probe radii
+    log.info("Getting all sasa values")
     df_sasa = generate_sasa_dataframe()
     df_sasa.to_csv("data/pdb-features/sasa.csv", index=False)
-    # get all hbonds
-
-    # process_basepair_details()
+    log.info("Getting basepair details")
+    process_basepair_details()
 
 
 if __name__ == "__main__":

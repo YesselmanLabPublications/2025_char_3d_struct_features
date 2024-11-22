@@ -1,4 +1,5 @@
 build
+documents
 *egg-info*
 not_in_repo
 .vscode/
