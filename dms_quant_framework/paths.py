@@ -1,2 +1,2 @@
 DATA_PATH = "data"
-RESOURCE_PATH = "dms_3d_features/resources"
+RESOURCE_PATH = "dms_quant_framework/resources"

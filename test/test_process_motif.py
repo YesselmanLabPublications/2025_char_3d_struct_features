@@ -1,5 +1,5 @@
 import pytest
-from dms_3d_features.process_motifs import trim
+from dms_quant_framework.process_motifs import trim
 
 import pytest
 import pandas as pd

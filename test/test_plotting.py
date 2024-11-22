@@ -1,5 +1,5 @@
 import pytest
-from dms_3d_features.plotting import colors_for_sequence
+from dms_quant_framework.plotting import colors_for_sequence
 
 
 class TestColorsForSequence:

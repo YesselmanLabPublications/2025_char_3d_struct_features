@@ -20,8 +20,8 @@ from seq_tools import SequenceStructure, fold, has_5p_sequence, to_rna
 from seq_tools.structure import find as seq_ss_find
 
 # Local imports
-from dms_3d_features.logger import get_logger, setup_logging
-from dms_3d_features.paths import DATA_PATH
+from dms_quant_framework.logger import get_logger, setup_logging
+from dms_quant_framework.paths import DATA_PATH
 
 
 log = get_logger("process-motifs")
