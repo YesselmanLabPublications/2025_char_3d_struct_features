@@ -12,7 +12,8 @@ from vienna import fold
 import numpy as np
 
 # Local imports
-from dms_3d_features.paths import DATA_PATH
+from dms_quant_framework.paths import DATA_PATH
+
 
 def load_data(file_path: str) -> pd.DataFrame:
     """
@@ -89,7 +90,13 @@ def select_rows(df: pd.DataFrame, num_rows_to_select: int) -> List[int]:
     return selected_rows
 
 
-def get_rows_with_min_std_dev(df: pd.DataFrame, selected_count: Dict[str, int], attempts=10, min_rows=5, max_rows=7) -> list:
+def get_rows_with_min_std_dev(
+    df: pd.DataFrame,
+    selected_count: Dict[str, int],
+    attempts=10,
+    min_rows=5,
+    max_rows=7,
+) -> list:
     """
     Find the set of rows that minimize the standard deviation of motif counts.
 
@@ -103,24 +110,26 @@ def get_rows_with_min_std_dev(df: pd.DataFrame, selected_count: Dict[str, int], 
     Returns:
         list: The rows with the minimum standard deviation of motif counts.
     """
-    min_std_dev = float('inf') 
-    best_selected_rows = None  
+    min_std_dev = float("inf")
+    best_selected_rows = None
 
-    for _ in range(attempts):  
+    for _ in range(attempts):
         num_rows_to_select = random.randint(min_rows, max_rows)
         candidate_rows = select_rows(df, num_rows_to_select)
 
         motif_counts = [
-            selected_count.get(df.loc[row, "motif_seq"], 0) + 1 for row in candidate_rows
+            selected_count.get(df.loc[row, "motif_seq"], 0) + 1
+            for row in candidate_rows
         ]
-    
+
         std_dev = np.std(motif_counts)
- 
+
         if std_dev < min_std_dev:
             min_std_dev = std_dev
             best_selected_rows = candidate_rows
-    
+
     return best_selected_rows
+
 
 def construct_sequences(
     selected_rows: List[int],
@@ -154,7 +163,7 @@ def construct_sequences(
     Returns:
         tuple[str, str, list[str], list[str]]: Full RNA sequence, its secondary structure,
                                                motifs used and their secondary structures
-    """  
+    """
     items = list(rna_bases.items())
     full_seq_right, full_seq_left = [], []
     full_seq_right_ss, full_seq_left_ss = [], []
@@ -224,6 +233,7 @@ def validate_sequence(seq_length: int, usable_seq: List[str]) -> bool:
 
     return True
 
+
 def add_to_pool(
     full_seq: str,
     full_ss: str,
@@ -251,6 +261,7 @@ def add_to_pool(
         pool_motifs.append(selected_motif)
         pool_m_ss.append(selected_ss)
 
+
 def no_of_seqs_less_than_50(
     selected_rows: List[int],
     df: pd.DataFrame,
@@ -268,7 +279,7 @@ def no_of_seqs_less_than_50(
 ) -> bool:
     """
     Process the iteration when usable sequences are less than 50.
-    
+
     Args:
         selected_rows (list[int]): Indices of selected rows.
         df (pd.DataFrame): DataFrame containing the motif data.
@@ -284,7 +295,7 @@ def no_of_seqs_less_than_50(
         variables (dict): Dictionary containing global variables for the process.
         selected_count (dict[str, int]): Dictionary that would give the number of times
                                          motif was used in the final pool.
-    
+
     Returns:
         bool: True if a sequence is added to the pool, otherwise False.
     """
@@ -317,6 +328,7 @@ def no_of_seqs_less_than_50(
     )
     return True
 
+
 def no_of_seqs_greater_than_50(
     df: pd.DataFrame,
     hairpin_set1: List[str],
@@ -334,7 +346,7 @@ def no_of_seqs_greater_than_50(
 ) -> bool:
     """
     Process the iteration when usable sequences are greater than or equal to 50.
-    
+
     Args:
         df (pd.DataFrame): DataFrame containing the motif data.
         hairpin_set1 (list[str]): First complementary hairpin set.
@@ -350,7 +362,7 @@ def no_of_seqs_greater_than_50(
         selected_count (dict[str, int]): Dictionary that would give the number of times
                                          motif was used in the final pool.
         length_w_no_motifs (int): length of the sequence without adding the motifs
-        
+
     Returns:
         bool: True if a sequence is added to the pool, otherwise False.
     """
@@ -359,12 +371,14 @@ def no_of_seqs_greater_than_50(
     if not best_selected_rows:
         return False
 
-    motifs_length = sum((len(df.loc[row, "motif_seq"]) - 1) for row in best_selected_rows)
+    motifs_length = sum(
+        (len(df.loc[row, "motif_seq"]) - 1) for row in best_selected_rows
+    )
     seq_length = length_w_no_motifs + motifs_length
-    
+
     if not validate_sequence(seq_length, variables["usable_seq"]):
         return False
-    
+
     for row in best_selected_rows:
         seq_value = df.loc[row, "motif_seq"]
         selected_count[seq_value] = selected_count.get(seq_value, 0) + 1
@@ -393,6 +407,7 @@ def no_of_seqs_greater_than_50(
         selected_ss,
     )
     return True
+
 
 def finalize_sequences(
     pool: List[str], variables: dict, desired_sequences: int
@@ -460,6 +475,7 @@ def save_to_json(variables: dict, output_file: str) -> None:
     )
     df_final.to_json(output_file, orient="records")
 
+
 def main() -> None:
     """
     Main function to generate and save RNA sequences with secondary structures.
@@ -470,7 +486,7 @@ def main() -> None:
     jsons_folder = os.path.join(DATA_PATH, "jsons")
     if not os.path.exists(jsons_folder):
         os.makedirs(jsons_folder)
-        
+
     hairpin = list("GCGAGUAGC")
     hairpin_ss = list("((.....))")
     rna_bases = {"A": "U", "U": "A", "C": "G", "G": "C"}
@@ -485,15 +501,19 @@ def main() -> None:
     selected_count = defaultdict(int)
 
     helices_length = 46
-    length_w_no_motifs = len(hairpin) + len(five_prime) + len(three_prime) + helices_length
+    length_w_no_motifs = (
+        len(hairpin) + len(five_prime) + len(three_prime) + helices_length
+    )
 
     while len(variables["usable_seq"]) < desired_sequences:
         hairpin_set1, hairpin_set2 = generate_complementary_pairs(rna_bases)
 
         num_rows_to_select = random.randint(5, 7)
         selected_rows = select_rows(df, num_rows_to_select)
-        
-        motifs_length = sum((len(df.loc[row, "motif_seq"]) - 1) for row in selected_rows)
+
+        motifs_length = sum(
+            (len(df.loc[row, "motif_seq"]) - 1) for row in selected_rows
+        )
         seq_length = length_w_no_motifs + motifs_length
 
         if not validate_sequence(seq_length, variables["usable_seq"]):
@@ -539,6 +559,7 @@ def main() -> None:
             f"Current usable sequences: {len(variables['usable_seq'])}/{desired_sequences}"
         )
     save_to_json(variables, output_file)
+
 
 if __name__ == "__main__":
     main()

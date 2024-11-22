@@ -10,9 +10,9 @@ import shutil
 import regex as re
 from biopandas.pdb import PandasPdb
 
-from dms_3d_features.logger import get_logger
-from dms_3d_features.paths import DATA_PATH
-from dms_3d_features.stats import r2
+from dms_quant_framework.logger import get_logger
+from dms_quant_framework.paths import DATA_PATH
+from dms_quant_framework.stats import r2
 
 log = get_logger("pdb-features")
 

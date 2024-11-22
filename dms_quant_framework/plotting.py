@@ -9,8 +9,8 @@ from sklearn.linear_model import LinearRegression
 
 from rna_secstruct_design.selection import get_selection, SecStruct
 
-from dms_3d_features.logger import get_logger
-from dms_3d_features.util import find_stretches
+from dms_quant_framework.logger import get_logger
+from dms_quant_framework.util import find_stretches
 
 log = get_logger("plotting")
 

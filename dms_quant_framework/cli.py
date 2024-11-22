@@ -3,19 +3,19 @@ import warnings
 import pandas as pd
 import os
 
-from dms_3d_features.sasa import generate_sasa_dataframe
-from dms_3d_features.pdb_features import (
+from dms_quant_framework.sasa import generate_sasa_dataframe
+from dms_quant_framework.pdb_features import (
     process_basepair_details,
     generate_distance_dataframe,
 )
-from dms_3d_features.process_motifs import (
+from dms_quant_framework.process_motifs import (
     process_mutation_histograms_to_json,
     GenerateMotifDataFrame,
     GenerateResidueDataFrame,
     generate_pdb_residue_dataframe,
 )
-from dms_3d_features.logger import setup_logging, get_logger
-from dms_3d_features.paths import DATA_PATH
+from dms_quant_framework.logger import setup_logging, get_logger
+from dms_quant_framework.paths import DATA_PATH
 
 warnings.filterwarnings(
     "ignore", message="FreeSASA: warning: Found no matches to resn 'A', typo?"

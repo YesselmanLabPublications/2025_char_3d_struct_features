@@ -1,5 +1,5 @@
 from typing import List
-from dms_3d_features.logger import get_logger
+from dms_quant_framework.logger import get_logger
 
 log = get_logger("util")
 
