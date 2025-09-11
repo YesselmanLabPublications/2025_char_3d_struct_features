@@ -1119,7 +1119,7 @@ def regen_data():
     gen = GenerateMotifDataFrame()
     log.info("Generating motif dataframe")
     gen.run(df, "pdb_library_1")
-    df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
+    df1 = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
     log.info("Generating residue dataframe")
     gen = GenerateResidueDataFrame()
     gen.run(df1, "pdb_library_1", inf_sub)
