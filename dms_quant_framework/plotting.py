@@ -658,3 +658,182 @@ def format_small_plot(ax):
     """
     publication_style_ax(ax, fsize=8, ytick_size=6, xtick_size=6)
     plt.subplots_adjust(left=0.3, bottom=0.21, top=0.98)
+
+
+def calculate_subplot_coordinates(
+    fig_size_inches, subplot_layout, subplot_size_inches, spacing=None
+):
+    """
+    Calculate subplot coordinates for matplotlib subplots with exact subplot sizes.
+
+    Parameters:
+    -----------
+    fig_size_inches : tuple
+        Figure size as (width, height) in inches
+    subplot_layout : tuple
+        Number of subplots as (rows, columns)
+    subplot_size_inches : tuple
+        Exact size of each subplot as (width, height) in inches
+    spacing : dict, optional
+        Spacing parameters as {'hspace': float, 'wspace': float, 'margins': dict}
+        - hspace: horizontal spacing between subplots in inches
+        - wspace: vertical spacing between subplots in inches
+        - margins: {'left': float, 'right': float, 'top': float, 'bottom': float} in inches
+        Defaults to 0.5 inch spacing and 0.75 inch margins
+
+    Returns:
+    --------
+    list
+        List of tuples, each containing (left, bottom, width, height) coordinates
+        in figure-relative units (0-1) for each subplot
+
+    Raises:
+    -------
+    Warning if subplots won't fit in the specified figure size
+    """
+    import warnings
+
+    # Default spacing if not provided
+    if spacing is None:
+        spacing = {
+            "hspace": 0.5,  # horizontal spacing in inches
+            "wspace": 0.5,  # vertical spacing in inches
+            "margins": {"left": 0.75, "right": 0.75, "top": 0.75, "bottom": 0.75},
+        }
+
+    fig_width, fig_height = fig_size_inches
+    rows, cols = subplot_layout
+    subplot_width, subplot_height = subplot_size_inches
+
+    # Calculate total space needed
+    total_subplot_width = cols * subplot_width
+    total_subplot_height = rows * subplot_height
+
+    total_hspace = (cols - 1) * spacing["hspace"]
+    total_wspace = (rows - 1) * spacing["wspace"]
+
+    total_margins_width = spacing["margins"]["left"] + spacing["margins"]["right"]
+    total_margins_height = spacing["margins"]["top"] + spacing["margins"]["bottom"]
+
+    required_width = total_subplot_width + total_hspace + total_margins_width
+    required_height = total_subplot_height + total_wspace + total_margins_height
+
+    # Check if subplots fit and issue warnings
+    if required_width > fig_width:
+        warnings.warn(
+            f"Subplots won't fit horizontally! Required width: {required_width:.2f}\", "
+            f'Figure width: {fig_width:.2f}". Consider increasing figure width or '
+            f"reducing subplot width/spacing."
+        )
+
+    if required_height > fig_height:
+        warnings.warn(
+            f"Subplots won't fit vertically! Required height: {required_height:.2f}\", "
+            f'Figure height: {fig_height:.2f}". Consider increasing figure height or '
+            f"reducing subplot height/spacing."
+        )
+
+    # Calculate coordinates even if they don't fit (for debugging)
+    coordinates = []
+
+    # Convert inches to figure-relative coordinates
+    for row in range(rows):
+        for col in range(cols):
+            # Calculate position in inches
+            left_inches = spacing["margins"]["left"] + col * (
+                subplot_width + spacing["hspace"]
+            )
+            bottom_inches = spacing["margins"]["bottom"] + (rows - 1 - row) * (
+                subplot_height + spacing["wspace"]
+            )
+
+            # Convert to figure-relative coordinates (0-1)
+            left_rel = left_inches / fig_width
+            bottom_rel = bottom_inches / fig_height
+            width_rel = subplot_width / fig_width
+            height_rel = subplot_height / fig_height
+
+            coordinates.append((left_rel, bottom_rel, width_rel, height_rel))
+
+    return coordinates
+
+
+def merge_neighboring_coords(coords_list, indices):
+    """
+    Merge a list of coordinate positions into one bigger coordinate.
+    The indices do not need to be consecutive in the list, but the corresponding
+    rectangles must be adjacent (touching) in the figure.
+
+    Parameters:
+    -----------
+    coords_list : list
+        List of coordinate tuples (left, bottom, width, height)
+    indices : list of int
+        List of indices of coordinates to merge. Must be adjacent (touching).
+
+    Returns:
+    --------
+    list
+        Updated list with merged coordinates
+    """
+    if not indices:
+        raise ValueError("indices list cannot be empty")
+    if any(i < 0 or i >= len(coords_list) for i in indices):
+        raise ValueError("indices out of range")
+
+    # Get the coordinates to merge
+    coords_to_merge = [coords_list[i] for i in indices]
+
+    # Check that all rectangles are touching (adjacent)
+    # We'll use a simple approach: for each pair, check if they touch
+    def rects_touch(r1, r2, tol=1e-8):
+        # r = (left, bottom, width, height)
+        l1, b1, w1, h1 = r1
+        l2, b2, w2, h2 = r2
+        r1_right = l1 + w1
+        r1_top = b1 + h1
+        r2_right = l2 + w2
+        r2_top = b2 + h2
+
+        # Check for overlap or touching on any edge
+        horizontal_touch = (
+            abs(r1_right - l2) < tol
+            or abs(r2_right - l1) < tol
+            or (l1 < r2_right - tol and r1_right > l2 + tol)
+        )
+        vertical_overlap = (b1 < r2_top - tol and b1 + h1 > b2 + tol) or (
+            b2 < r1_top - tol and b2 + h2 > b1 + tol
+        )
+        vertical_touch = (
+            abs(r1_top - b2) < tol
+            or abs(r2_top - b1) < tol
+            or (b1 < r2_top - tol and r1_top > b2 + tol)
+        )
+        horizontal_overlap = (l1 < r2_right - tol and l1 + w1 > l2 + tol) or (
+            l2 < r1_right - tol and l2 + w2 > l1 + tol
+        )
+        # Touching if they share an edge (either horizontally or vertically)
+        return (horizontal_touch and vertical_overlap) or (
+            vertical_touch and horizontal_overlap
+        )
+
+    # Calculate the merged coordinates
+    left = min(coord[0] for coord in coords_to_merge)
+    bottom = min(coord[1] for coord in coords_to_merge)
+    right = max(coord[0] + coord[2] for coord in coords_to_merge)
+    top = max(coord[1] + coord[3] for coord in coords_to_merge)
+    width = right - left
+    height = top - bottom
+
+    # Create new list with merged coordinates
+    new_coords_list = []
+    n = len(coords_list)
+    idx_set = set(indices)
+    merged = False
+    for i in range(n):
+        if i in idx_set and not merged:
+            new_coords_list.append((left, bottom, width, height))
+            merged = True
+        elif i not in idx_set:
+            new_coords_list.append(coords_list[i])
+    return new_coords_list
