@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-from dms_quant_framework.stats import r2
+from dms_3d_features.stats import r2
 
 from rna_motif_library.util import (  # pyright: ignore[reportMissingImports]
     add_motif_indentifier_columns,

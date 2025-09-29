@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from dms_quant_framework.sasa import compute_solvent_accessibility
+from dms_3d_features.sasa import compute_solvent_accessibility
 
 RESOURCE_PATH = "test/resources/"
 
