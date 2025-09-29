@@ -2,12 +2,13 @@
 from concurrent.futures import ThreadPoolExecutor
 import glob
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 # Third party imports
 import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp, linregress, pearsonr, zscore
+from matplotlib import pyplot as plt
 
 # Yesselman lab imports
 from rna_map.mutation_histogram import (
@@ -21,7 +22,7 @@ from seq_tools.structure import find as seq_ss_find
 
 # Local imports
 from dms_quant_framework.logger import get_logger, setup_logging
-from dms_quant_framework.paths import DATA_PATH
+from dms_quant_framework.paths import DATA_PATH, REVISION_PATH
 
 
 log = get_logger("process-motifs")
@@ -225,6 +226,11 @@ def process_mutation_histograms_to_json():
         mut_histos = get_mut_histos_from_pickle_file(pfile)
         mut_histos = convert_dreem_mut_histos_to_mutation_histogram(mut_histos)
         df_results = get_dataframe(mut_histos, cols)
+        # not sure why this is needed, but it is
+        if df_results.iloc[0]["name"].startswith("seq_"):
+            df_results["name"] = df_results["name"].str.replace(
+                "seq_", "construct", regex=False
+            )
         df_results = df_results.rename(columns={"pop_avg": "data"})
         df_results = to_rna(df_results)
 
@@ -238,6 +244,72 @@ def process_mutation_histograms_to_json():
         final_result.to_json(output_file, orient="records")
 
     log.info("Mutation histogram processing and JSON conversion completed successfully")
+
+
+def divide_lists(
+    row: pd.Series, data_col: str, trim_5prime: int, trim_3prime: int
+) -> list[float]:
+    """
+    Element-wise division of construct data by normalization data in `row[data_col]`.
+    If lengths differ, trims normalization array (e.g., extra 5′/3′ regions).
+    """
+    if "data_construct" not in row or data_col not in row:
+        missing = [k for k in ("data_construct", data_col) if k not in row]
+        raise KeyError(f"divide_lists: missing columns in row: {missing}")
+
+    a = np.array(row["data_construct"], dtype=float)
+    b = np.array(row[data_col], dtype=float)
+
+    if a.ndim != 1 or b.ndim != 1:
+        raise ValueError(
+            "Expected 1D arrays for data_construct and normalization column."
+        )
+
+    if a.shape != b.shape:
+        if (trim_5prime + trim_3prime) >= len(b):
+            raise ValueError(
+                f"Trimming ({trim_5prime}+{trim_3prime}) removes entire normalization array of length {len(b)}."
+            )
+        b = b[trim_5prime : len(b) - trim_3prime]
+        if a.shape != b.shape:
+            raise ValueError(
+                f"After trimming, shapes still differ: construct={a.shape}, norm={b.shape}. "
+                f"Adjust trim_5prime/trim_3prime."
+            )
+
+    out = np.full_like(a, np.nan, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        np.divide(a, b, out=out, where=(b != 0))
+    out[~np.isfinite(out)] = np.nan  # set inf/-inf to NaN
+    return out.tolist()
+
+
+def merge_and_normalize(
+    df_construct: pd.DataFrame,
+    df_norm: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Merge on 'name' and compute element-wise ratios: data_construct / data{suffix}.
+    Example suffixes: '_nomod', '_denature'.
+    """
+    merged = pd.merge(df_construct, df_norm, on="name", suffixes=("_org", "_norm"))
+    for i, row in merged.iterrows():
+        if row["sequence_org"] != row["sequence_norm"]:
+            print("fail")
+    # Divide data_org by data_norm, replace inf/-inf with 0.0, and store in new column data_ratio
+    data_org_arr = merged["data_org"].apply(np.array)
+    data_norm_arr = merged["data_norm"].apply(np.array)
+
+    def safe_divide(a, b):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out = np.true_divide(a, b)
+            out[~np.isfinite(out)] = 0.0  # replace inf, -inf, nan with 0.0
+        return out.tolist()
+
+    merged["data_ratio"] = [
+        safe_divide(a, b) for a, b in zip(data_org_arr, data_norm_arr)
+    ]
+    return merged
 
 
 # step 2: generate motif dataframes ################################################
@@ -263,7 +335,14 @@ class GenerateMotifDataFrame:
             f"removed {len(df) - len(df_filtered)} rows with num_aligned <= 2000 or sn <= 4.0"
         )
         df_motif = self._create_motif_dataframe(df_filtered)
+        df_motif.to_json(
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs.json",
+            orient="records",
+        )
         df_motif_helix = self.__create_helix_motif_dataframe(df_filtered)
+        df_motif.to_json(
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_helix.json", orient="records"
+        )
         dfs = [df_motif, df_motif_helix]
         df_motif_concat = pd.concat(dfs).reset_index(drop=True)
         df_motif_concat.to_json(
@@ -276,6 +355,78 @@ class GenerateMotifDataFrame:
             orient="records",
         )
         df_motif_avg = self._calculate_average_motif_data(df_motif_concat_standardized)
+        df_motif_avg.to_json(
+            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs_avg.json",
+            orient="records",
+        )
+        return df_motif_avg
+
+    def run_normalized_df(self, df: pd.DataFrame, name: str) -> pd.DataFrame:
+        """
+        Process the input normalized dataframe to generate motif data.
+
+        Args:
+            df (pd.DataFrame): Input dataframe with sequence and structure data.
+
+        Returns:
+            pd.DataFrame: Processed dataframe with average motif data.
+        """
+        self.name = name
+        log.info(f"Processing {name} with {len(df)} rows")
+        df_filtered = df.query(f"num_aligned > 2000 and sn > 0.0")
+        log.info(
+            f"removed {len(df) - len(df_filtered)} rows with num_aligned <= 2000 or sn <= 0.0"
+        )
+        df_motif = self._create_motif_dataframe(df_filtered)
+        df_motif.to_json(
+            f"{REVISION_PATH}/normalized/motifs/{self.name}_motifs.json",
+            orient="records",
+        )
+        df_motif_helix = self.__create_helix_motif_dataframe(df_filtered)
+        dfs = [df_motif, df_motif_helix]
+        df_motif_concat = pd.concat(dfs).reset_index(drop=True)
+        df_motif_concat_standardized = self._standardize_motifs(df_motif_concat)
+        df_motif_avg = self._calculate_average_motif_data(df_motif_concat_standardized)
+        df_motif_avg.to_json(
+            f"{REVISION_PATH}/normalized/motifs/{self.name}_motifs_avg.json",
+            orient="records",
+        )
+        return df_motif_avg
+
+    def run_different_threshold_df(
+        self, df: pd.DataFrame, name: str, threshold: int, sn_val: int
+    ) -> pd.DataFrame:
+        """
+        Process the input dataframe to generate motif data.
+
+        Args:
+            df (pd.DataFrame): Input dataframe with sequence and structure data.
+            threshold : the threshold value for the num_aligned.
+            sn_val : threshold value for the signal-to-noise ratio.
+
+        Returns:
+            pd.DataFrame: Processed dataframe with average motif data.
+        """
+        self.name = name
+        log.info(f"Processing {name} with {len(df)} rows")
+        df_filtered = df.query(f"num_aligned > {threshold} and sn > {sn_val}")
+        log.info(
+            f"removed {len(df) - len(df_filtered)} rows with num_aligned <= {threshold} or sn <= {sn_val}"
+        )
+        df_motif = self._create_motif_dataframe(df_filtered)
+        df_motif.to_json(
+            f"{REVISION_PATH}/dif_threshold/motifs/{self.name}_motifs_{threshold}.json",
+            orient="records",
+        )
+        df_motif_helix = self.__create_helix_motif_dataframe(df_filtered)
+        dfs = [df_motif, df_motif_helix]
+        df_motif_concat = pd.concat(dfs).reset_index(drop=True)
+        df_motif_concat_standardized = self._standardize_motifs(df_motif_concat)
+        df_motif_avg = self._calculate_average_motif_data(df_motif_concat_standardized)
+        df_motif_avg.to_json(
+            f"{REVISION_PATH}/dif_threshold/motifs/{self.name}_motifs_avg_{threshold}.json",
+            orient="records",
+        )
         return df_motif_avg
 
     def _create_motif_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -286,10 +437,7 @@ class GenerateMotifDataFrame:
             for j, m in enumerate(junctions):
                 motif_data.append(self._extract_motif_data(row, j, m))
         df_motif = pd.DataFrame(motif_data)
-        df_motif.to_json(
-            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs.json",
-            orient="records",
-        )
+
         return df_motif
 
     def _extract_motif_data(
@@ -332,9 +480,7 @@ class GenerateMotifDataFrame:
             for j, m in enumerate(ss.get_helices()):
                 all_data.append(self.__get_helix_data(m, row, j))
         df_motif = pd.DataFrame(all_data)
-        df_motif.to_json(
-            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_helix.json", orient="records"
-        )
+
         return df_motif
 
     def __get_helix_data(self, m, row, m_pos) -> Dict[str, Any]:
@@ -498,10 +644,6 @@ class GenerateMotifDataFrame:
             )
 
         df_avg = pd.DataFrame(avg_data)
-        df_avg.to_json(
-            f"{DATA_PATH}/raw-jsons/motifs/{self.name}_motifs_avg.json",
-            orient="records",
-        )
         return df_avg
 
     def _get_pdb_paths(self, motif_seq: str) -> List[str]:
@@ -545,13 +687,73 @@ class GenerateMotifDataFrame:
 
 # step 3: generate residue dataframes ##############################################
 class GenerateResidueDataFrame:
-    def run(self, df_motif, name):
+    def run(self, df_motif, name, inf_sub):
         self.name = name
         df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
+        self.__save_avg_residues_to_json(df_residues_avg)
         df_residues = self.__expand_residue_dataframe(df_residues_avg)
-        df_residues = self.__add_log_data(df_residues)
+        df_residues = self.__add_log_data(df_residues, inf_sub)
         df_residues = self.__mark_outliers(df_residues)
         self.__save_residues_to_json(df_residues)
+
+    def run_normalized_df(self, df_motif, name, inf_sub: int):
+        """
+        Execute the full residue analysis pipeline on a normalized motif dataframes.
+        """
+        self.name = name
+        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
+        df_residues_avg.to_json(
+            f"{REVISION_PATH}/normalized/residues/{self.name}_residues_avg.json",
+            orient="records",
+        )
+        df_residues = self.__expand_residue_dataframe(df_residues_avg)
+        df_residues = self.__add_log_data(df_residues, inf_sub)
+        df_residues = self.__mark_outliers(df_residues)
+        df_residues.to_json(
+            f"{REVISION_PATH}/normalized/residues/{self.name}_residues.json",
+            orient="records",
+        )
+
+    def run_different_threshold_df(self, df_motif, name, threshold: int, inf_sub: int):
+        """
+        Execute the full residue analysis pipeline on a motif dataframes at different thresholds.
+
+        This method processes the input motif dataframe through a series of steps:
+        1. Generates an averaged residue dataframe based on the specified threshold.
+        2. Expands the averaged dataframe into a full residue-level dataframe.
+        3. Adds logarithmic-transformed data columns, with substitution handling.
+        4. Marks statistical outliers within the dataset.
+        5. Saves the processed residue dataframe to a JSON file, labeled by threshold.
+
+        Parameters
+        ----------
+        df_motif : pandas.DataFrame
+            Input dataframe containing motif-related residue data.
+        name : str
+            Name identifier for this run, stored as an instance attribute.
+        threshold : int
+            Cutoff value used to filter motifs when generating the averaged residue dataframe.
+        inf_sub : int
+            Value used to substitute infinite or undefined values during log-data computation.
+
+        Returns
+        -------
+        None
+            Results are saved to a JSON file; no dataframe is returned directly.
+        """
+        self.name = name
+        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
+        df_residues_avg.to_json(
+            f"{REVISION_PATH}/dif_threshold/residues/{self.name}_residues_avg_{threshold}.json",
+            orient="records",
+        )
+        df_residues = self.__expand_residue_dataframe(df_residues_avg)
+        df_residues = self.__add_log_data(df_residues, inf_sub)
+        df_residues = self.__mark_outliers(df_residues)
+        df_residues.to_json(
+            f"{REVISION_PATH}/dif_threshold/residues/{self.name}_residues_{threshold}.json",
+            orient="records",
+        )
 
     def __generate_avg_residue_dataframe(self, df_motif):
         all_data = []
@@ -559,7 +761,6 @@ class GenerateResidueDataFrame:
             residue_data = self.__process_motif_row(row)
             all_data.extend(residue_data)
         df_residues = pd.DataFrame(all_data)
-        self.__save_avg_residues_to_json(df_residues)
         return df_residues
 
     def __process_motif_row(self, row):
@@ -700,9 +901,9 @@ class GenerateResidueDataFrame:
             "pdb_r_pos": row["pdb_r_pos"],
         }
 
-    def __add_log_data(self, df_residues):
+    def __add_log_data(self, df_residues, inf_sub):
         df_residues["ln_r_data"] = np.log(df_residues["r_data"])
-        df_residues["ln_r_data"].replace(-np.inf, -9.8, inplace=True)
+        df_residues["ln_r_data"].replace(-np.inf, inf_sub, inplace=True)
         return df_residues
 
     def __mark_outliers(self, df_residues):
@@ -830,20 +1031,104 @@ def generate_stats(df):
 
 
 def regen_data():
+
+    # inf_sub values for denatured_norm = -7.6, nomod_norm = -5.3, pdb_library_1 = -9.8
+    df_denature = pd.read_json(
+        f"{DATA_PATH}/raw-jsons/constructs/pdb_library_denature.json"
+    )
     df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1.json")
+    df_nomod = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_nomod.json")
+
+    ## NORMALIZING USING DENATURE DATA ##
+    df_denature_norm = merge_and_normalize(df, df_denature)
+    df_denature_norm.to_json(
+        f"{REVISION_PATH}/normalized/constructs/pdb_library_denature_normalized.json",
+        orient="records",
+    )
+
+    ## NORMALIZING USING NOMOD DATA ##
+    df_nomod_norm = merge_and_normalize(df, df_nomod)
+    df_nomod_norm.to_json(
+        f"{REVISION_PATH}/normalized/constructs/pdb_library_nomod_normalized.json",
+        orient="records",
+    )
+    exit()
+
+    ## GENERATING DATAFRAMES WITH DIFFERENT THRESHOLDS ##
+    thresholds = [1000, 2000, 3000, 4000, 5000, 10000, 20000, 40000, 80000]
+    sn_val_diff = 4.0
+    inf_sub = -9.8
+
+    for t in thresholds:
+        gen = GenerateMotifDataFrame()
+        log.info("Generating motif dataframe for denature data")
+        gen.run_different_threshold_df(df, "pdb_library_1", t, sn_val_diff)
+        df1 = pd.read_json(
+            f"{REVISION_PATH}/dif_threshold/motifs/pdb_library_1_motifs_avg_{t}.json"
+        )
+        log.info("Generating residue dataframe for denature data")
+        gen = GenerateResidueDataFrame()
+        gen.run_different_threshold_df(df1, "pdb_library_1", t, inf_sub)
+
+    ## GENERATING DATAFRAMES FOR PDB_LIBRARY_1 ##
     gen = GenerateMotifDataFrame()
     log.info("Generating motif dataframe")
     gen.run(df, "pdb_library_1")
-    df = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
+    df1 = pd.read_json(f"{DATA_PATH}/raw-jsons/motifs/pdb_library_1_motifs_avg.json")
     log.info("Generating residue dataframe")
     gen = GenerateResidueDataFrame()
-    gen.run(df, "pdb_library_1")
-    df = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
+    gen.run(df1, "pdb_library_1", inf_sub)
+    df1 = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
     log.info("Generating pdb residue dataframe")
-    df = generate_pdb_residue_dataframe(df)
-    df.to_json(
+    df1 = generate_pdb_residue_dataframe(df1)
+    df1.to_json(
         f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
         orient="records",
+    )
+
+    ## GENERATING DATAFRAMES FOR DENATURE DATA ##
+    sn_val = 0
+    threshold = 2000
+    gen = GenerateMotifDataFrame()
+    log.info("Generating motif dataframe for denature data")
+    gen.run_different_threshold_df(
+        df_denature, "pdb_library_denature", threshold, sn_val
+    )
+    df_denature = pd.read_json(
+        f"{REVISION_PATH}/dif_threshold/motifs/pdb_library_denature_motifs_avg_2000.json"
+    )
+    log.info("Generating residue dataframe for denature data")
+    gen = GenerateResidueDataFrame()
+    gen.run_different_threshold_df(
+        df_denature, "pdb_library_denature", threshold, inf_sub
+    )
+
+    ## GENERATING DATAFRAMES FOR NORMALIZED DATA WHICH WAS NORMALIZED USING DENATURE DATA ##
+    inf_sub_den_norm = -7.6
+    gen = GenerateMotifDataFrame()
+    log.info("Generating normalized motif dataframe using denature data")
+    gen.run_normalized_df(df_denature_norm, "pdb_library_denature_normalized")
+    df_denature_norm = pd.read_json(
+        f"{REVISION_PATH}/normalized/motifs/pdb_library_denature_normalized_motifs_avg.json"
+    )
+    log.info("Generating normalized residue dataframe using denature data")
+    gen = GenerateResidueDataFrame()
+    gen.run_normalized_df(
+        df_denature_norm, "pdb_library_denature_normalized", inf_sub_den_norm
+    )
+
+    ## GENERATING DATAFRAMES FOR NORMALIZED DATA WHICH WAS NORMALIZED USING NOMOD DATA ##
+    inf_sub_nomod_norm = -5.3
+    gen = GenerateMotifDataFrame()
+    log.info("Generating normalized motif dataframe using nomod data")
+    gen.run_normalized_df(df_nomod_norm, "pdb_library_nomod_normalized")
+    df_nomod_norm = pd.read_json(
+        f"{REVISION_PATH}/normalized/motifs/pdb_library_nomod_normalized_motifs_avg.json"
+    )
+    log.info("Generating normalized residue dataframe using nomod data")
+    gen = GenerateResidueDataFrame()
+    gen.run_normalized_df(
+        df_nomod_norm, "pdb_library_nomod_normalized", inf_sub_nomod_norm
     )
 
 
