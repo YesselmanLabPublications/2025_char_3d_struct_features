@@ -7,6 +7,7 @@ import numpy as np
 import seaborn as sns
 from typing import List, Union, Optional
 from scipy.stats import ks_2samp, pearsonr, linregress
+from sklearn.metrics import r2_score
 from sklearn.linear_model import LinearRegression
 
 from rna_secstruct_design.selection import get_selection, SecStruct
@@ -15,6 +16,9 @@ from dms_3d_features.logger import get_logger
 from dms_3d_features.util import find_stretches
 
 log = get_logger("plotting")
+
+# all should have same linewidth and tickwidth
+LINEWIDTH = 0.75
 
 
 def colors_for_sequence(seq: str) -> List[str]:
@@ -337,7 +341,7 @@ def plot_motif_boxplot_stripplot(
         hue="r_loc_pos",
         palette=custom_palette,
         showfliers=False,
-        linewidth=0.5,
+        linewidth=0.75,
         ax=ax,
         legend=False,
     )
@@ -402,7 +406,6 @@ def plot_violins_w_percent(
     color="tab:gray",
     colors=None,
     gt_lt="greater",
-    text_offset=2.5,
     xlim=None,
     ax=None,
     sorted_by_mean: bool = False,
@@ -452,18 +455,24 @@ def plot_violins_w_percent(
             legend=False,
         )
 
-    ax.axvline(cutoff, color="black", linestyle="--", linewidth=0.5)
+    ax.axvline(cutoff, color="black", linestyle="--", linewidth=0.75)
     if xlim is not None:
         ax.set_xlim(xlim)
 
     # Add percentage labels
+    # Place the text a fixed distance from the left axis using axes coordinates
+    # (0, y) in axes fraction means left edge, so we use a small positive offset
+    x_offset_axes = 0.015  # 1.5% from the left edge of the axes
     for i, y_value in enumerate(percentages.index):
         ax.text(
-            ax.get_xlim()[0] + text_offset,
-            i + 0.03,
-            f"{percentages[y_value]:.2f}%",
+            x_offset_axes,
+            i + 0.04,
+            f"{percentages[y_value]:.1f}%",
             va="center",
-            ha="right",
+            ha="left",
+            fontsize=6,
+            fontname="Arial",
+            transform=ax.get_yaxis_transform(which="grid"),  # y in data, x in axes
         )
 
     return ax
@@ -512,7 +521,6 @@ def plot_violins_w_percent_groups(
         ax.set_ylabel("Motif Topology", labelpad=2)
         ax.set_xlabel("ln(Mutation Fraction)", labelpad=2)
         ax.set_xticks([-10, -8, -6, -4, -2])
-        format_small_plot(ax)
     return fig, axes
 
 
@@ -570,6 +578,73 @@ def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
     return ax
 
 
+def plot_regression_line(df, ax, x_col, y_col, r2_position=(0.99, 0.99)):
+    X = df[x_col].values.reshape(-1, 1)
+    y = df[y_col].values
+    model = LinearRegression()
+    model.fit(X, y)
+    r2 = r2_score(y, model.predict(X))
+    ax.plot(X, model.predict(X), color="black", linewidth=1)
+    ax.text(
+        r2_position[0],
+        r2_position[1],
+        f"R² = {r2:.2f}",
+        transform=ax.transAxes,
+        fontsize=8,
+        fontname="Arial",
+        verticalalignment="top",
+        horizontalalignment="right",
+    )
+    return r2
+
+
+def scatter_plot_w_regression(df, ax, x_col, y_col, r2_position=(0.99, 0.99), size=6):
+    # Prepare the data
+    X = df[x_col].values.reshape(-1, 1)
+    y = df[y_col].values
+
+    # Fit linear regression model
+    model = LinearRegression()
+    model.fit(X, y)
+    # Compute R-squared
+    r2 = r2_score(y, model.predict(X))
+    ax.scatter(X.flatten(), y, s=size)
+    # Add regression line
+    ax.plot(X, model.predict(X), color="black", linewidth=1)
+    plot_regression_line(df, ax, x_col, y_col, r2_position=r2_position)
+    return r2
+
+
+def heatmap_scatter_plot_w_regression(
+    df,
+    ax,
+    x_col,
+    y_col,
+    r2_position=(0.99, 0.99),
+    bins=15,
+    max_value=None,
+    min_value=None,
+):
+    heatmap_data, xedges, yedges = np.histogram2d(df[x_col], df[y_col], bins=bins)
+    im = ax.imshow(
+        heatmap_data.T,
+        origin="lower",
+        aspect="auto",
+        cmap="Blues",
+        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+        vmin=min_value,
+        vmax=max_value,  # set max value to 1000
+    )
+    cb = plt.colorbar(im, ax=ax)
+    cb.ax.tick_params(labelsize=8)
+    cb.ax.yaxis.set_tick_params(labelsize=8)
+    for l in cb.ax.yaxis.get_ticklabels():
+        l.set_fontname("Arial")
+        l.set_fontsize(6)
+    cb.ax.tick_params(width=0.75, size=2.0, pad=1)
+    plot_regression_line(df, ax, x_col, y_col, r2_position=r2_position)
+
+
 # style functions #############################################################
 
 
@@ -580,16 +655,16 @@ def publication_style_ax(
     Applies publication style formatting to the given matplotlib Axes object.
     Args:
         ax (matplotlib.axes.Axes): The Axes object to apply the formatting to.
-        fsize (int, optional): The font size for labels, title, and tick labels. Defaults to 10.
-        ytick_size (int, optional): The font size for y-axis tick labels. Defaults to 8.
-        xtick_size (int, optional): The font size for x-axis tick labels. Defaults to 8.
+        fsize (int, optional): The font size for labels, title, and tick labels. Defaults to 8.
+        ytick_size (int, optional): The font size for y-axis tick labels. Defaults to 6.
+        xtick_size (int, optional): The font size for x-axis tick labels. Defaults to 6.
     Returns:
         None
     """
     # Set line widths and tick widths
     for spine in ax.spines.values():
-        spine.set_linewidth(0.5)
-    ax.tick_params(width=0.5, size=1.5, pad=1)
+        spine.set_linewidth(0.75)
+    ax.tick_params(width=0.75, size=2.0, pad=1)
 
     # Set font sizes for labels and title
     ax.xaxis.label.set_fontsize(fsize)
@@ -608,11 +683,6 @@ def publication_style_ax(
         label.set_fontsize(ytick_size)
     for label in ax.get_xticklabels():
         label.set_fontsize(xtick_size)
-
-    # Set font sizes for text objects added with ax.text()
-    for text in ax.texts:
-        text.set_fontname("Arial")
-        text.set_fontsize(fsize - 2)
 
 
 def publication_scatter(ax, x, y, **kwargs):
@@ -645,25 +715,6 @@ def publication_line(ax, x, y, **kwargs):
         None
     """
     ax.plot(x, y, markersize=10, lw=2, **kwargs)
-
-
-def format_small_plot(ax):
-    """
-    Formats a small plot with specified style parameters. Plot is expected to have
-    a single subplot and setup like
-
-    ```python
-    fig, ax = plt.subplots(figsize=(1.50, 1.25), dpi=200)
-    ```
-
-    Args:
-        ax: The matplotlib Axes object to format.
-
-    Returns:
-        None
-    """
-    publication_style_ax(ax, fsize=8, ytick_size=6, xtick_size=6)
-    plt.subplots_adjust(left=0.3, bottom=0.21, top=0.98)
 
 
 def calculate_subplot_coordinates(
