@@ -2,6 +2,7 @@
 black
 biopandas
 click
+editdistance
 freesasa
 matplotlib
 pandas
@@ -10,11 +11,13 @@ regex
 seaborn
 scipy
 scikit-learn
-vienna
+tabulate
+# lab specific libraries
 rna_map @ git+https://github.com/YesselmanLab/rna_map@main
 rna_seq_tools @ git+https://github.com/jyesselm/seq_tools@main
 rna_secstruct @ git+https://github.com/jyesselm/rna_secstruct@main
 rna_secstruct_design @ git+https://github.com/YesselmanLab/rna_secstruct_design
+vienna
 # to run jupyter notebooks
 jupyter
 notebook

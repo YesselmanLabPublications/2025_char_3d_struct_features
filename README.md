@@ -32,7 +32,7 @@ conda deactivate
 conda activate dms_3d_features
 
 # Download the data from figshare
-wget https://figshare.com/ndownloader/files/50690154 -O data.zip
+wget https://figshare.com/ndownloader/files/58663213 -O data.zip
 unzip data.zip
 
 # Run the tests

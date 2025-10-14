@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import matplotlib.axes as axes
 import matplotlib.lines as mlines
 import matplotlib.image as mpimg
+import matplotlib.patches as patches
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -363,41 +364,6 @@ def plot_motif_boxplot_stripplot(
     return ax
 
 
-def plot_whole_pdb_reactivity(df: pd.DataFrame, ax=None) -> plt.Axes:
-    """
-    Plots the whole RNA data points.
-
-    Args:
-        df_sub (pd.DataFrame): A DataFrame
-        ax (matplotlib.axes._axes.Axes, optional): An existing matplotlib axis to plot on.
-            If None, a new axis is created. Defaults to None.
-
-    Returns:
-        axes: The matplotlib axis object with the plotted data.
-    """
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(7, 7))
-
-    sequence = df.iloc[0]["m_sequence"]
-    pos = list(range(len(sequence)))
-
-    labels = []
-    for n, s in zip(df.iloc[0]["m_sequence"], df.iloc[0]["m_structure"]):
-        labels.append(f"{n}\n{s}")
-
-    sns.scatterplot(
-        x="r_loc_pos",
-        y="whole_rna_reac",
-        data=df,
-        color="magenta",
-        s=70,
-        ax=ax,
-        zorder=3,
-    )
-    ax.set_xticks(ticks=range(len(pos)), labels=labels)
-    return ax
-
-
 def plot_violins_w_percent(
     df: pd.DataFrame,
     x: str,
@@ -462,66 +428,24 @@ def plot_violins_w_percent(
     # Add percentage labels
     # Place the text a fixed distance from the left axis using axes coordinates
     # (0, y) in axes fraction means left edge, so we use a small positive offset
-    x_offset_axes = 0.015  # 1.5% from the left edge of the axes
+    # Place label at left of each violin, vertically centered on each group
+    # Calculate the y position for each category using the y-axis tick locations
+    x_offset_axes = 0.015  # in axes fraction
+    yticklocs = ax.get_yticks()
     for i, y_value in enumerate(percentages.index):
+        ytick = yticklocs[i] if i < len(yticklocs) else i  # fallback to i if mismatch
         ax.text(
             x_offset_axes,
-            i + 0.04,
+            ytick + 0.03,
             f"{percentages[y_value]:.1f}%",
             va="center",
             ha="left",
             fontsize=6,
             fontname="Arial",
-            transform=ax.get_yaxis_transform(which="grid"),  # y in data, x in axes
+            transform=ax.get_yaxis_transform(),
         )
 
     return ax
-
-
-def plot_violins_w_percent_groups(
-    df,
-    x_col,
-    y_col,
-    gt_lt="greater",
-    color="tab:gray",
-    n_panels=2,
-    xlim=(-10, 1),
-    figsize=(2.0, 1.5),
-    dpi=200,
-    sorted_by_mean: bool = False,
-):
-    df = df.copy()
-    df.sort_values(y_col, inplace=True, ascending=True)
-
-    # Split groups into n_panels
-    groups = df[y_col].unique()
-    group_splits = np.array_split(groups, n_panels)
-    scale_factor = 1.35
-    # Create subplots
-    fig, axes = plt.subplots(
-        1, n_panels, figsize=(figsize[0] * n_panels * scale_factor, figsize[1]), dpi=dpi
-    )
-    if n_panels == 1:
-        axes = [axes]
-
-    for i, (ax, group_split) in enumerate(zip(axes, group_splits)):
-        df_subset = df[df[y_col].isin(group_split)]
-        plot_violins_w_percent(
-            df=df_subset,
-            x=x_col,
-            y=y_col,
-            cutoff=-5.45,
-            color=color,
-            gt_lt=gt_lt,
-            text_offset=1.5 * scale_factor,
-            xlim=xlim,
-            sorted_by_mean=sorted_by_mean,
-            ax=ax,
-        )
-        ax.set_ylabel("Motif Topology", labelpad=2)
-        ax.set_xlabel("ln(Mutation Fraction)", labelpad=2)
-        ax.set_xticks([-10, -8, -6, -4, -2])
-    return fig, axes
 
 
 def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
@@ -578,27 +502,65 @@ def plot_scatter_w_best_fit_line(x, y, size=1, ax=None):
     return ax
 
 
-def plot_regression_line(df, ax, x_col, y_col, r2_position=(0.99, 0.99)):
+def text(ax, text, pos="top left", fontsize=6):
+    if pos == "top left":
+        ax.text(
+            0.03,
+            0.97,
+            text,
+            transform=ax.transAxes,
+            fontsize=6,
+            fontname="Arial",
+            verticalalignment="top",
+            horizontalalignment="left",
+        )
+    elif pos == "top right":
+        ax.text(
+            0.97,
+            0.97,
+            text,
+            transform=ax.transAxes,
+            fontsize=6,
+            fontname="Arial",
+            verticalalignment="top",
+            horizontalalignment="right",
+        )
+    elif pos == "bottom left":
+        ax.text(
+            0.03,
+            0.03,
+            text,
+            transform=ax.transAxes,
+            fontsize=6,
+            fontname="Arial",
+            verticalalignment="bottom",
+            horizontalalignment="left",
+        )
+    elif pos == "bottom right":
+        ax.text(
+            0.97,
+            0.03,
+            text,
+            transform=ax.transAxes,
+            fontsize=6,
+            fontname="Arial",
+            verticalalignment="bottom",
+            horizontalalignment="right",
+        )
+
+
+def plot_regression_line(df, ax, x_col, y_col, pos="top left"):
     X = df[x_col].values.reshape(-1, 1)
     y = df[y_col].values
     model = LinearRegression()
     model.fit(X, y)
     r2 = r2_score(y, model.predict(X))
     ax.plot(X, model.predict(X), color="black", linewidth=1)
-    ax.text(
-        r2_position[0],
-        r2_position[1],
-        f"R² = {r2:.2f}",
-        transform=ax.transAxes,
-        fontsize=8,
-        fontname="Arial",
-        verticalalignment="top",
-        horizontalalignment="right",
-    )
+    text(ax, f"R² = {r2:.2f}", pos=pos)
     return r2
 
 
-def scatter_plot_w_regression(df, ax, x_col, y_col, r2_position=(0.99, 0.99), size=6):
+def scatter_plot_w_regression(df, ax, x_col, y_col, pos="top left", size=6):
     # Prepare the data
     X = df[x_col].values.reshape(-1, 1)
     y = df[y_col].values
@@ -611,7 +573,7 @@ def scatter_plot_w_regression(df, ax, x_col, y_col, r2_position=(0.99, 0.99), si
     ax.scatter(X.flatten(), y, s=size)
     # Add regression line
     ax.plot(X, model.predict(X), color="black", linewidth=1)
-    plot_regression_line(df, ax, x_col, y_col, r2_position=r2_position)
+    plot_regression_line(df, ax, x_col, y_col, pos=pos)
     return r2
 
 
@@ -1036,3 +998,77 @@ def load_and_fit_image_to_subplot(image_path, ax):
         spine.set_visible(False)
 
     return img_plot
+
+
+def draw_box_around_subplot(
+    fig, coords, linewidth=2, edgecolor="red", facecolor="none"
+):
+    """
+    Draw a box around a subplot in a figure.
+
+    Parameters:
+    -----------
+    fig : matplotlib.figure.Figure
+        The figure to draw the box on
+    coords : tuple
+        Subplot coordinates (left, bottom, width, height)
+    linewidth : float, optional
+        Width of the box line (default: 2)
+    edgecolor : str, optional
+        Color of the box edge (default: "red")
+    facecolor : str, optional
+        Color of the box face (default: "none")
+    """
+    bbox = patches.Rectangle(
+        (
+            coords[0],
+            coords[1],
+        ),  # (left, bottom) in figure coordinates
+        coords[2],  # width in figure coordinates
+        coords[3],  # height in figure coordinates
+        linewidth=linewidth,
+        edgecolor=edgecolor,
+        facecolor=facecolor,
+        transform=fig.transFigure,
+    )
+    fig.patches.append(bbox)
+
+
+def draw_boxes_around_coords_list(fig, coords_list):
+    """
+    Draw a box around each set of subplot coordinates in coords_list,
+    using a different color for each box.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The figure to draw the boxes on.
+    coords_list : list of tuple
+        List of (left, bottom, width, height) tuples in figure coordinates.
+    """
+    color_cycle = (
+        plt.rcParams["axes.prop_cycle"]
+        .by_key()
+        .get(
+            "color",
+            [
+                "red",
+                "blue",
+                "green",
+                "orange",
+                "purple",
+                "brown",
+                "pink",
+                "gray",
+                "olive",
+                "cyan",
+            ],
+        )
+    )
+
+    for i, coords in enumerate(coords_list):
+        color = color_cycle[i % len(color_cycle)]
+        draw_box_around_subplot(
+            fig, coords, linewidth=2, edgecolor=color, facecolor="none"
+        )
+    return fig

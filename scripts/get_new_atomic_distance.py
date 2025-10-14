@@ -314,8 +314,49 @@ def motifs_to_cif(unique, is_isolatable):
             m.to_cif(f"scripts/new_pdbs/{name}/{m.name}.cif")
 
 
+def get_table_data():
+    df_exclude = pd.read_csv("scripts/exclude.csv")
+    exclude = {row["motif_name"]: 1 for i, row in df_exclude.iterrows()}
+    motifs = load_dict_from_pickle("scripts/motifs.pkl")
+    rev_motifs = load_dict_from_pickle("scripts/rev_motifs.pkl")
+    table_data = []
+    for k, v in motifs.items():
+        for m in v:
+            res_strs = []
+            for res in m.get_residues():
+                res_strs.append(res.chain_id + str(res.num))
+            res_str = ";".join(res_strs)
+            used = 0 if m.name in exclude else 1
+            table_data.append(
+                {
+                    "sequence" : k,
+                    "name" : m.name,
+                    "residues" : res_str,
+                    "used" : used,
+                }
+            )
+    for k, v in rev_motifs.items():
+        for m in v:
+            res_strs = []
+            for res in m.get_residues():
+                res_strs.append(res.chain_id + str(res.num))
+            res_str = ";".join(res_strs)
+            used = 0 if m.name in exclude else 1
+            table_data.append(
+                {
+                    "sequence" : k,
+                    "name" : m.name,
+                    "residues" : res_str,
+                    "used" : used,
+                }
+            )
+    df_table = pd.DataFrame(table_data)
+    df_table.to_csv("scripts/table_data.csv", index=False)
+
 def main():
-    get_atomic_distances()
+    get_table_data()
+    exit()
+    # get_atomic_distances()
     df_dist = pd.read_csv("scripts/non_wc_distances.csv")
     path = "/Users/jyesselman2/Library/CloudStorage/Dropbox/2_code/python/rna_motif_library/data/summaries/non_redundant_motifs.csv"
     df_unique = pd.read_csv(path)
@@ -329,6 +370,7 @@ def main():
     exclude = {row["motif_name"]: 1 for i, row in df_exclude.iterrows()}
     data = []
     avg_data = []
+    table_data = []
     for (atom_1, atom_2, pair), g in df_dist.groupby(["atom_1", "atom_2", "pair"]):
         g = g.query("motif_name in @unique")
         g = g.query("motif_name in @is_isolatable")
