@@ -36,17 +36,17 @@ def cli():
 
 
 @cli.command()
-@click.option("--motif-file", type=str, default=None)
+@click.option("--motif-csv", type=str, default=None)
 @click.option("--desired-sequences", type=int, default=10)
-def generate_pdb_library(motif_file: str, desired_sequences: int):
+def generate_pdb_library(motif_csv: str, desired_sequences: int):
     """
     Generate a PDB library from motif data. Run with --desired-sequences 7,500 for full library.
     """
     setup_logging()
-    if motif_file is None:
+    if motif_csv is None:
         log.info("Using default motif file")
-        motif_file = f"{DATA_PATH}/csvs/motif_sequences.csv"
-    df = pd.read_csv(motif_file)
+        motif_csv = f"{DATA_PATH}/csvs/motif_sequences.csv"
+    df = pd.read_csv(motif_csv)
     build_pdb_library_from_motif_df(df, desired_sequences)
 
 

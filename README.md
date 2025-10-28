@@ -7,7 +7,7 @@ Contact: jyesselm@unl.edu
 
 
 ## Data Download
-Make sure to download the data used in this project from [10.6084/m9.figshare.27880434](https://figshare.com/ndownloader/files/50690154). Unzip this data and store it in the `data/` directory within the current project directory.
+Make sure to download the data used in this project from [10.6084/m9.figshare.27880434](https://figshare.com/ndownloader/files/58663213). Unzip this data and store it in the `data/` directory within the current project directory.
 
 
 ## Installation
@@ -15,21 +15,17 @@ Make sure to download the data used in this project from [10.6084/m9.figshare.27
 git clone https://github.com/YesselmanLabPublications/2024_dms_3d_features.git
 cd 2024_dms_3d_features
 
-# Create a new conda environment
-conda create --name dms_3d_features python=3.9
+# Create a new conda environment  also works with mamba / micromamba
+conda env create -f environment.yml
+# mamba create -n dms-3d-features -f environment.yml
+# micromamba create -n dms-3d-features -f environment.yml
 
 # Activate the conda environment
-conda activate dms_3d_features
-
-# if you need to install RNAfold
-conda install -c bioconda viennarna
+conda activate dms-3d-features
 
 # Install the package
+# pip install -e . for development
 pip install . 
-
-# Deactivate the conda environment to reset sometimes need to do this
-conda deactivate
-conda activate dms_3d_features
 
 # Download the data from figshare
 wget https://figshare.com/ndownloader/files/58663213 -O data.zip
@@ -44,7 +40,7 @@ pytest
 
 ```bash
 # note this will take a while to generate all 7,500 with --desired-sequences 7500
-python dms_3d_features/cli.py generate-pdb-library data/csvs/motif_sequences.csv --desired-sequences 1000
+python dms_3d_features/cli.py generate-pdb-library --motif-csv data/csvs/motif_sequences.csv --desired-sequences 7500
 ```
 
 ## Running the analysis 
