@@ -1,0 +1,69 @@
+name: Install and Test DMS 3D Features
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Micromamba
+      - name: Setup Micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          environment-name: dms-3d-features
+          cache-downloads: true
+          cache-environment: true
+
+      # Cache the dataset (same cache key across OSes)
+      - name: Restore cached dataset
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: figshare-data-v1
+
+      # Download and unzip if not cached
+      - name: Download and unzip dataset
+        shell: bash -l {0}
+        run: |
+          if [ ! -d "data" ]; then
+            echo "Downloading Figshare dataset..."
+            wget --progress=dot:giga \
+                 --retry-connrefused --waitretry=5 \
+                 --timeout=30 --tries=10 \
+                 -O data.zip https://figshare.com/ndownloader/files/58663213
+            unzip -q data.zip -d data
+            rm data.zip
+          else
+            echo "✅ Using cached dataset."
+          fi
+
+      # Install package
+      - name: Install package
+        shell: bash -l {0}
+        run: |
+          micromamba run -n dms-3d-features pip install -e .
+
+      # Run tests
+      - name: Run pytest suite
+        shell: bash -l {0}
+        run: |
+          micromamba run -n dms-3d-features pytest -v --maxfail=1 --disable-warnings
+
+      # Optional: verify data
+      - name: List data contents
+        run: ls -lh data

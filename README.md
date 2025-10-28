@@ -12,7 +12,7 @@ Make sure to download the data used in this project from [10.6084/m9.figshare.27
 
 ## Installation
 ```bash
-git clone https://github.com/YesselmanLabPublications/2024_dms_3d_features.git
+git clone https://github.com/YesselmanLabPublications/2025_char_3d_struct_features
 cd 2024_dms_3d_features
 
 # Create a new conda environment  also works with mamba / micromamba
