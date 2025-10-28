@@ -18,10 +18,6 @@ from dms_3d_features.util import find_stretches
 
 log = get_logger("plotting")
 
-# all should have same linewidth and tickwidth
-LINEWIDTH = 0.75
-
-
 def colors_for_sequence(seq: str) -> List[str]:
     """
     Returns a list of colors corresponding to the input DNA/RNA sequence.

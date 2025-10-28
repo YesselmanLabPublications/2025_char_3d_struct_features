@@ -246,44 +246,7 @@ def process_mutation_histograms_to_json():
     log.info("Mutation histogram processing and JSON conversion completed successfully")
 
 
-def divide_lists(
-    row: pd.Series, data_col: str, trim_5prime: int, trim_3prime: int
-) -> list[float]:
-    """
-    Element-wise division of construct data by normalization data in `row[data_col]`.
-    If lengths differ, trims normalization array (e.g., extra 5′/3′ regions).
-    """
-    if "data_construct" not in row or data_col not in row:
-        missing = [k for k in ("data_construct", data_col) if k not in row]
-        raise KeyError(f"divide_lists: missing columns in row: {missing}")
-
-    a = np.array(row["data_construct"], dtype=float)
-    b = np.array(row[data_col], dtype=float)
-
-    if a.ndim != 1 or b.ndim != 1:
-        raise ValueError(
-            "Expected 1D arrays for data_construct and normalization column."
-        )
-
-    if a.shape != b.shape:
-        if (trim_5prime + trim_3prime) >= len(b):
-            raise ValueError(
-                f"Trimming ({trim_5prime}+{trim_3prime}) removes entire normalization array of length {len(b)}."
-            )
-        b = b[trim_5prime : len(b) - trim_3prime]
-        if a.shape != b.shape:
-            raise ValueError(
-                f"After trimming, shapes still differ: construct={a.shape}, norm={b.shape}. "
-                f"Adjust trim_5prime/trim_3prime."
-            )
-
-    out = np.full_like(a, np.nan, dtype=float)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        np.divide(a, b, out=out, where=(b != 0))
-    out[~np.isfinite(out)] = np.nan  # set inf/-inf to NaN
-    return out.tolist()
-
-
+# step 2: merge and normalize #######################################################
 def merge_and_normalize(
     df_construct: pd.DataFrame,
     df_norm: pd.DataFrame,
@@ -312,7 +275,7 @@ def merge_and_normalize(
     return merged
 
 
-# step 2: generate motif dataframes ################################################
+# step 3: generate motif dataframes ################################################
 class GenerateMotifDataFrame:
     """
     A class used to generate and process motif data from constructs.
@@ -685,7 +648,7 @@ class GenerateMotifDataFrame:
         return [""] * len(motif_seq)
 
 
-# step 3: generate residue dataframes ##############################################
+# step 4: generate residue dataframes ##############################################
 class GenerateResidueDataFrame:
     def run(self, df_motif, name, inf_sub):
         self.name = name
@@ -930,7 +893,7 @@ class GenerateResidueDataFrame:
         )
 
 
-# step 4: merge pdb info into motif and residue dataframes ##########################
+# step 5: merge pdb info into motif and residue dataframes ##########################
 def generate_pdb_residue_dataframe(df_residue):
     # this stores what type of non-wc bair each residue is part of
     df_pairs = pd.read_csv(f"{DATA_PATH}/csvs/basepair_data_for_motifs.csv")
@@ -993,46 +956,10 @@ def generate_pdb_residue_dataframe(df_residue):
     return df_final
 
 
-def generate_stats(df):
-    all_data = []
-    for [m_sequence, r_loc_pos], g in df.groupby(["m_sequence", "r_loc_pos"]):
-        g_sort = g.sort_values("r_pos", ascending=True)
-        r = linregress(g["r_pos"], normalize(g["r_data"]))
-        if len(g) > 20:
-            min_vals = g_sort["r_data"].values[0:10]
-            max_vals = g_sort["r_data"].values[-10:]
-            ks_2samp_stat, ks_2samp_p_value = ks_2samp(min_vals, max_vals)
-        else:
-            ks_2samp_stat, ks_2samp_p_value = -1, -1
-        data = {
-            "r_nuc": g["r_nuc"].iloc[0],
-            "r_type": g["r_type"].iloc[0],
-            "pairs": g["likely_pair"].iloc[0],
-            "m_sequence": m_sequence,
-            "m_token": g["m_token"].iloc[0],
-            "r_loc_pos": r_loc_pos,
-            "slope": r.slope,
-            "intercept": r.intercept,
-            "r2": r.rvalue**2,
-            "p_val ": r.pvalue,
-            "ks_stat": ks_2samp_stat,
-            "ks_p_val": ks_2samp_p_value,
-            "count": len(g),
-            "r_pos_min": g["r_pos"].min(),
-            "r_pos_max": g["r_pos"].max(),
-            "r_data_min": g["r_data"].min(),
-            "r_data_max": g["r_data"].max(),
-            "r_data": g["r_data"].tolist(),
-            "r_pos": g["r_pos"].tolist(),
-        }
-        all_data.append(data)
-    df_stats = pd.DataFrame(all_data)
-    df_stats.to_json("stats.json", orient="records")
+# run steps 2-5 ###################################################################
 
 
-def regen_data():
-
-    # inf_sub values for denatured_norm = -7.6, nomod_norm = -5.3, pdb_library_1 = -9.8
+def generate_normalized_construct_dataframes():
     df_denature = pd.read_json(
         f"{DATA_PATH}/raw-jsons/constructs/pdb_library_denature.json"
     )
@@ -1040,37 +967,49 @@ def regen_data():
     df_nomod = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_nomod.json")
 
     ## NORMALIZING USING DENATURE DATA ##
-    df_denature_norm = merge_and_normalize(df, df_denature)
-    df_denature_norm.to_json(
-        f"{REVISION_PATH}/normalized/constructs/pdb_library_denature_normalized.json",
-        orient="records",
-    )
+    path = f"{REVISION_PATH}/normalized/constructs/pdb_library_denature_normalized.json"
+    if os.path.exists(path):
+        log.info(f"Skipping {path}: Output file already exists")
+        return
+    else:
+        df_denature_norm = merge_and_normalize(df, df_denature)
+        df_denature_norm.to_json(path, orient="records")
 
     ## NORMALIZING USING NOMOD DATA ##
-    df_nomod_norm = merge_and_normalize(df, df_nomod)
-    df_nomod_norm.to_json(
-        f"{REVISION_PATH}/normalized/constructs/pdb_library_nomod_normalized.json",
-        orient="records",
-    )
-    exit()
+    path = f"{REVISION_PATH}/normalized/constructs/pdb_library_nomod_normalized.json"
+    if os.path.exists(path):
+        log.info(f"Skipping {path}: Output file already exists")
+        return
+    else:
+        df_nomod_norm = merge_and_normalize(df, df_nomod)
+        df_nomod_norm.to_json(path, orient="records")
 
+
+def generate_threshold_motif_dataframes():
+    """
+    Generate motif dataframes for different thresholds.
+    """
     ## GENERATING DATAFRAMES WITH DIFFERENT THRESHOLDS ##
     thresholds = [1000, 2000, 3000, 4000, 5000, 10000, 20000, 40000, 80000]
     sn_val_diff = 4.0
     inf_sub = -9.8
-
+    log.info("Generating motif and residue dataframes for different thresholds")
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1.json")
     for t in thresholds:
         gen = GenerateMotifDataFrame()
-        log.info("Generating motif dataframe for denature data")
+        log.info(f"Generating motif dataframe for threshold {t}")
         gen.run_different_threshold_df(df, "pdb_library_1", t, sn_val_diff)
         df1 = pd.read_json(
             f"{REVISION_PATH}/dif_threshold/motifs/pdb_library_1_motifs_avg_{t}.json"
         )
-        log.info("Generating residue dataframe for denature data")
         gen = GenerateResidueDataFrame()
         gen.run_different_threshold_df(df1, "pdb_library_1", t, inf_sub)
 
+
+def generate_motif_dataframes():
+    inf_sub = -9.8
     ## GENERATING DATAFRAMES FOR PDB_LIBRARY_1 ##
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_1.json")
     gen = GenerateMotifDataFrame()
     log.info("Generating motif dataframe")
     gen.run(df, "pdb_library_1")
@@ -1086,58 +1025,15 @@ def regen_data():
         orient="records",
     )
 
-    ## GENERATING DATAFRAMES FOR DENATURE DATA ##
-    sn_val = 0
-    threshold = 2000
-    gen = GenerateMotifDataFrame()
-    log.info("Generating motif dataframe for denature data")
-    gen.run_different_threshold_df(
-        df_denature, "pdb_library_denature", threshold, sn_val
-    )
-    df_denature = pd.read_json(
-        f"{REVISION_PATH}/dif_threshold/motifs/pdb_library_denature_motifs_avg_2000.json"
-    )
-    log.info("Generating residue dataframe for denature data")
-    gen = GenerateResidueDataFrame()
-    gen.run_different_threshold_df(
-        df_denature, "pdb_library_denature", threshold, inf_sub
-    )
-
-    ## GENERATING DATAFRAMES FOR NORMALIZED DATA WHICH WAS NORMALIZED USING DENATURE DATA ##
-    inf_sub_den_norm = -7.6
-    gen = GenerateMotifDataFrame()
-    log.info("Generating normalized motif dataframe using denature data")
-    gen.run_normalized_df(df_denature_norm, "pdb_library_denature_normalized")
-    df_denature_norm = pd.read_json(
-        f"{REVISION_PATH}/normalized/motifs/pdb_library_denature_normalized_motifs_avg.json"
-    )
-    log.info("Generating normalized residue dataframe using denature data")
-    gen = GenerateResidueDataFrame()
-    gen.run_normalized_df(
-        df_denature_norm, "pdb_library_denature_normalized", inf_sub_den_norm
-    )
-
-    ## GENERATING DATAFRAMES FOR NORMALIZED DATA WHICH WAS NORMALIZED USING NOMOD DATA ##
-    inf_sub_nomod_norm = -5.3
-    gen = GenerateMotifDataFrame()
-    log.info("Generating normalized motif dataframe using nomod data")
-    gen.run_normalized_df(df_nomod_norm, "pdb_library_nomod_normalized")
-    df_nomod_norm = pd.read_json(
-        f"{REVISION_PATH}/normalized/motifs/pdb_library_nomod_normalized_motifs_avg.json"
-    )
-    log.info("Generating normalized residue dataframe using nomod data")
-    gen = GenerateResidueDataFrame()
-    gen.run_normalized_df(
-        df_nomod_norm, "pdb_library_nomod_normalized", inf_sub_nomod_norm
-    )
-
 
 def main():
     """
     main function for script
     """
     setup_logging()
-    regen_data()
+    generate_normalized_construct_dataframes()
+    generate_threshold_motif_dataframes()
+    generate_motif_dataframes()
 
 
 if __name__ == "__main__":

@@ -18,8 +18,7 @@ import sys
 
 # logging #####################################################################
 
-APP_LOGGER_NAME = "dms-quant-framework"
-
+APP_LOGGER_NAME = "dms-3d-features"
 
 def setup_logging(file_name: str = None) -> logging.Logger:
     """

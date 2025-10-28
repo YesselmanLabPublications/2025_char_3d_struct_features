@@ -12,7 +12,10 @@ from vienna import fold
 import numpy as np
 
 # Local imports
+from dms_3d_features.logger import get_logger, setup_logging
 from dms_3d_features.paths import DATA_PATH
+
+log = get_logger("library-build")
 
 
 def load_data(file_path: str) -> pd.DataFrame:
@@ -440,7 +443,7 @@ def finalize_sequences(
             y = editdistance.eval(p1, p2)
             if y > 20 and ens_defect_p1 <= 5:
                 if p1 not in usable_seq:
-                    print(p1)
+                    log.info(p1)
                     usable_motifs.append(m1)
                     usable_m_ss.append(s1)
                     usable_seq.append(p1)
@@ -454,39 +457,19 @@ def finalize_sequences(
             break
 
 
-def save_to_json(variables: dict, output_file: str) -> None:
+def build_pdb_library_from_motif_df(
+    df: pd.DataFrame, desired_sequences: int = 100
+) -> pd.DataFrame:
     """
-    Save the usable sequences to a JSON file.
+    Generates a DataFrame of RNA sequences with secondary structures, given a motifs dataframe.
 
     Args:
-        variables (dict): Dictionary containing global variables.
-        output_file (str): Path to save the JSON file.
+        df (pd.DataFrame): DataFrame containing motif sequences (as from load_data()).
+        desired_sequences (int): The number of sequences to generate (default 100).
+
+    Returns:
+        pd.DataFrame: DataFrame with usable sequences and associated features.
     """
-    df_final = pd.DataFrame(
-        {
-            "seq": variables["usable_seq"],
-            "ss": variables["usable_ss"],
-            "motifs": variables["usable_motifs"],
-            "motifs_ss": variables["usable_m_ss"],
-            "len": variables["seq_len"],
-            "ens_defect": variables["ens_def"],
-            "edit_distance": variables["edit_dis"],
-        }
-    )
-    df_final.to_json(output_file, orient="records")
-
-
-def main() -> None:
-    """
-    Main function to generate and save RNA sequences with secondary structures.
-    """
-    file_path = f"{DATA_PATH}/csvs/motif_sequences.csv"
-    output_file = f"{DATA_PATH}/jsons/pdb_library.json"
-
-    jsons_folder = os.path.join(DATA_PATH, "jsons")
-    if not os.path.exists(jsons_folder):
-        os.makedirs(jsons_folder)
-
     hairpin = list("GCGAGUAGC")
     hairpin_ss = list("((.....))")
     rna_bases = {"A": "U", "U": "A", "C": "G", "G": "C"}
@@ -494,9 +477,7 @@ def main() -> None:
     five_prime_ss = list("((((....)))).")
     three_prime = list("AAAGAAACAACAACAACAAC")
     three_prime_ss = list("....................")
-    desired_sequences = 100
 
-    df = load_data(file_path)
     variables = initialize_variables()
     selected_count = defaultdict(int)
 
@@ -555,10 +536,26 @@ def main() -> None:
         if success:
             finalize_sequences(variables["pool"], variables, desired_sequences)
 
-        print(
-            f"Current usable sequences: {len(variables['usable_seq'])}/{desired_sequences}"
-        )
-    save_to_json(variables, output_file)
+    # Return a DataFrame with the same structure as the original output
+    df_final = pd.DataFrame(
+        {
+            "seq": variables["usable_seq"],
+            "ss": variables["usable_ss"],
+            "motifs": variables["usable_motifs"],
+            "motifs_ss": variables["usable_m_ss"],
+            "len": variables["seq_len"],
+            "ens_defect": variables["ens_def"],
+            "edit_distance": variables["edit_dis"],
+        }
+    )
+    return df_final
+
+
+def main() -> None:
+    setup_logging()
+    df = load_data(f"{DATA_PATH}/csvs/motif_sequences.csv")
+    df_final = build_pdb_library_from_motif_df(df, desired_sequences=10)
+    df_final.to_json(f"{DATA_PATH}/jsons/pdb_library.json", orient="records")
 
 
 if __name__ == "__main__":

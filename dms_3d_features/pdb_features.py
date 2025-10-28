@@ -375,6 +375,9 @@ def process_basepair_details():
     pdb_paths = sorted(glob.glob(f"{DATA_PATH}/pdbs/*/*.pdb"))
     output_dir = f"{DATA_PATH}/dssr-output/"
 
+    log.info(
+        f"Processing {len(pdb_paths)} PDB files with 3DNA #########################"
+    )
     all_tables = []
     for pdb_path in pdb_paths:
         pdb_name = os.path.basename(pdb_path)[:-4]
@@ -387,9 +390,10 @@ def process_basepair_details():
             all_tables.append(extracted_table)
 
     combined_df = pd.concat(all_tables, ignore_index=True)
+    log.info(f"Saving combined basepair details to {DATA_PATH}/csvs/all_bp_details.csv")
     combined_df.to_csv(f"{DATA_PATH}/csvs/all_bp_details.csv", index=False)
     filtered_df = combined_df[combined_df["r_type"] == "WC"].copy()
-
+    log.info(f"Calculating RMSD for WC basepairs #########################")
     rmsd = []
     for i, row in filtered_df.iterrows():
         res_num1 = int(row["res_num1"])
@@ -397,14 +401,10 @@ def process_basepair_details():
 
         pdb_path = f"{DATA_PATH}/pdbs/{row['motif']}/{row['name'][:-10]}.pdb"
         rmsd_val = calculate_rmsd_bp(row["bp"], pdb_path, [res_num1, res_num2])
-
-        if rmsd_val is not None:
-            print(
-                f"RMSD for {row['bp']} at residues {res_num1}, {res_num2}: {rmsd_val}"
-            )
         rmsd.append(rmsd_val)
 
     filtered_df["rmsd"] = rmsd
+    log.info(f"Saving WC basepairs with RMSD to {DATA_PATH}/csvs/wc_with_rmsd.csv")
     filtered_df.to_csv(f"{DATA_PATH}/csvs/wc_with_rmsd.csv", index=False)
     df_all = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
 
@@ -673,6 +673,7 @@ def get_all_atom_distances():
 
 
 def get_non_canonical_atom_distances_reactivity_correlation():
+    get_all_atom_distances()
     df = pd.read_csv(f"{DATA_PATH}/pdb-features/non_canonical_atom_distances.csv")
     data = []
     for (pair, atom1, atom2), g in df.groupby(["pair", "atom1", "atom2"]):
@@ -802,6 +803,7 @@ def get_all_atom_distances_with_ratio():
 
 
 def get_non_canonical_atom_distances_reactivity_ratio_correlation():
+    get_all_atom_distances_with_ratio()
     df = pd.read_csv(
         f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_with_ratio.csv"
     )

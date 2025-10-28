@@ -1,8 +1,8 @@
-# Code to for paper: "A quantitative framework for structural interpretation of DMS reactivity"
+# Code to for paper: "Characterizing RNA 3D structural features from DMS reactivity"
 
-XXX link to bioRxiv preprint 
+bioarxiv link: https://www.biorxiv.org/content/10.1101/2024.11.21.624766v2
 
-By D. H. Sanduni Deenalattha, Chris P. Jurich, Bret Lange, Darren Armstrong, Kaitlyn Nein, and Joseph D. Yesselman
+By D. H. Sanduni Deenalattha, Chris P. Jurich, Bret Lange, Darren Armstrong, Kaitlyn Nein, Sakshi Jain, and Joseph D. Yesselman
 Contact: jyesselm@unl.edu
 
 
@@ -16,7 +16,7 @@ git clone https://github.com/YesselmanLabPublications/2024_dms_3d_features.git
 cd 2024_dms_3d_features
 
 # Create a new conda environment
-conda create --name dms_3d_features python=3.8
+conda create --name dms_3d_features python=3.9
 
 # Activate the conda environment
 conda activate dms_3d_features
@@ -38,6 +38,13 @@ unzip data.zip
 # Run the tests
 # all should pass
 pytest 
+```
+
+## Generating the PDB library
+
+```bash
+# note this will take a while to generate all 7,500 with --desired-sequences 7500
+python dms_3d_features/cli.py generate-pdb-library data/csvs/motif_sequences.csv --desired-sequences 1000
 ```
 
 ## Running the analysis 
