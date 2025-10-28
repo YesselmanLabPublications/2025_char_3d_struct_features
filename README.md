@@ -7,7 +7,7 @@ Contact: jyesselm@unl.edu
 
 
 ## Data Download
-Make sure to download the data used in this project from [10.6084/m9.figshare.27880434](https://figshare.com/ndownloader/files/58663213). Unzip this data and store it in the `data/` directory within the current project directory.
+Make sure to download the data used in this project from DOI 10.6084/m9.figshare.27880434. A direct download link is: `https://figshare.com/ndownloader/files/58663213`. Unzip this data and store it in the `data/` directory within the current project directory. If you encounter a 403 Forbidden error, use the curl command below which sets a user-agent and referer.
 
 
 ## Installation
@@ -27,9 +27,14 @@ conda activate dms-3d-features
 # pip install -e . for development
 pip install . 
 
-# Download the data from figshare
-wget https://figshare.com/ndownloader/files/58663213 -O data.zip
-unzip data.zip
+# Download the data from Figshare (robust)
+URL="https://figshare.com/ndownloader/files/58663213"
+curl -fL --retry 8 --retry-delay 5 --retry-all-errors \
+     -H "User-Agent: Mozilla/5.0" \
+     -H "Referer: https://figshare.com/" \
+     -o data.zip "$URL"
+unzip -q data.zip -d data
+rm -f data.zip
 
 # Run the tests
 # all should pass

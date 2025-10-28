@@ -42,12 +42,21 @@ jobs:
         run: |
           if [ ! -d "data" ]; then
             echo "Downloading Figshare dataset..."
-            wget --progress=dot:giga \
-                 --retry-connrefused --waitretry=5 \
-                 --timeout=30 --tries=10 \
-                 -O data.zip https://figshare.com/ndownloader/files/58663213
+            URL="https://figshare.com/ndownloader/files/58663213"
+            # Use curl with retries, user-agent, and referer to avoid 403
+            curl -fL --retry 8 --retry-delay 5 --retry-all-errors \
+                 -H "User-Agent: Mozilla/5.0 (CI)" \
+                 -H "Referer: https://figshare.com/" \
+                 -o data.zip "$URL"
+            # Verify that the file is a valid zip
+            if ! unzip -tq data.zip > /dev/null 2>&1; then
+              echo "Downloaded file is not a valid zip. Exiting." >&2
+              rm -f data.zip
+              exit 1
+            fi
+            mkdir -p data
             unzip -q data.zip -d data
-            rm data.zip
+            rm -f data.zip
           else
             echo "✅ Using cached dataset."
           fi
