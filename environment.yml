@@ -1,0 +1,34 @@
+name: dms-3d-features
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pandas
+  - numpy
+  - matplotlib
+  - seaborn
+  - scikit-learn
+  - scipy
+  - click
+  - regex
+  - editdistance
+  - freesasa
+  - biopandas
+  - tabulate
+  - pytest
+  - jupyter
+  - notebook
+  - ipykernel
+  - ipython
+  - viennarna  # provides RNAfold and Python bindings (import RNA)
+  - pip:
+      - black
+    # lab specific packages
+      - rna_map @ git+https://github.com/YesselmanLab/rna_map@main
+      - rna_seq_tools @ git+https://github.com/jyesselm/seq_tools@main
+      - rna_secstruct @ git+https://github.com/jyesselm/rna_secstruct@main
+      - rna_secstruct_design @ git+https://github.com/YesselmanLab/rna_secstruct_design
+      - vienna
