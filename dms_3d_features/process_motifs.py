@@ -349,6 +349,10 @@ class GenerateMotifDataFrame:
         dfs = [df_motif, df_motif_helix]
         df_motif_concat = pd.concat(dfs).reset_index(drop=True)
         df_motif_concat_standardized = self._standardize_motifs(df_motif_concat)
+        df_motif_concat_standardized.to_json(
+            f"{REVISION_PATH}/37c_2min/motifs/{self.name}_motifs_standard.json",
+            orient="records",
+        )
         df_motif_avg = self._calculate_average_motif_data(df_motif_concat_standardized)
         df_motif_avg.to_json(
             f"{REVISION_PATH}/37c_2min/motifs/{self.name}_motifs_avg.json",
