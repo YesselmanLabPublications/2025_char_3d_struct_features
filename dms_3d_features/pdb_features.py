@@ -11,7 +11,7 @@ import regex as re
 from biopandas.pdb import PandasPdb
 
 from dms_3d_features.logger import get_logger
-from dms_3d_features.paths import DATA_PATH
+from dms_3d_features.paths import DATA_PATH, REVISION_PATH
 from dms_3d_features.stats import r2
 
 log = get_logger("pdb-features")
@@ -371,7 +371,7 @@ def calculate_rmsd_bp(bp: str, filename: str, resi_nums: list) -> float:
         return None
 
 
-def process_basepair_details():
+def process_basepair_details(df_all):
     pdb_paths = sorted(glob.glob(f"{DATA_PATH}/pdbs/*/*.pdb"))
     output_dir = f"{DATA_PATH}/dssr-output/"
 
@@ -406,8 +406,7 @@ def process_basepair_details():
     filtered_df["rmsd"] = rmsd
     log.info(f"Saving WC basepairs with RMSD to {DATA_PATH}/csvs/wc_with_rmsd.csv")
     filtered_df.to_csv(f"{DATA_PATH}/csvs/wc_with_rmsd.csv", index=False)
-    df_all = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
-
+    
     dms_dict = {}
     for k, all_row in df_all.iterrows():
         key = (all_row["m_sequence"], all_row["r_nuc"], all_row["pdb_r_pos"])
@@ -469,7 +468,7 @@ def process_basepair_details():
             all_data.append(data)
 
     df_fin = pd.DataFrame(all_data)
-    df_fin.to_csv(f"{DATA_PATH}/csvs/wc_details.csv", index=False)
+    return df_fin
 
 
 ## distance #######################################################################
@@ -635,10 +634,7 @@ def process_pair_and_atoms(df_pdb, df_dist, args):
     return df_dist_pairs
 
 
-def get_all_atom_distances():
-    df_pdb = pd.read_json(
-        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json"
-    )
+def get_all_atom_distances(df_pdb):
     df_dist = pd.read_csv(f"{DATA_PATH}/pdb-features/distances_all.csv")
     df_bfact = pd.read_csv(f"{DATA_PATH}/pdb-features/b_factor.csv")
     df_bfact = df_bfact[
@@ -667,14 +663,13 @@ def get_all_atom_distances():
         )
 
     df_all_results = pd.concat(results, ignore_index=True)
-    df_all_results.to_csv(
-        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances.csv", index=False
-    )
+    
+    return df_all_results
 
 
-def get_non_canonical_atom_distances_reactivity_correlation():
-    get_all_atom_distances()
-    df = pd.read_csv(f"{DATA_PATH}/pdb-features/non_canonical_atom_distances.csv")
+def get_non_canonical_atom_distances_reactivity_correlation(df, df_pdb):
+    get_all_atom_distances(df_pdb)
+    
     data = []
     for (pair, atom1, atom2), g in df.groupby(["pair", "atom1", "atom2"]):
         data.append(
@@ -686,10 +681,9 @@ def get_non_canonical_atom_distances_reactivity_correlation():
                 "r2": g["r2"].iloc[0],
             }
         )
-    pd.DataFrame(data).to_csv(
-        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_correlation.csv",
-        index=False,
-    )
+    
+    df_fin = pd.DataFrame(data)
+    return df_fin
 
 
 ## reactivity ratio with distance #################################################
@@ -764,10 +758,7 @@ def process_pair_and_atoms_with_ratio(df_pdb, df_dist, args):
     return df_dist_pairs
 
 
-def get_all_atom_distances_with_ratio():
-    df_pdb = pd.read_json(
-        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json"
-    )
+def get_all_atom_distances_with_ratio(df_pdb):
     df_dist = pd.read_csv(f"{DATA_PATH}/pdb-features/distances_all.csv")
     df_bfact = pd.read_csv(f"{DATA_PATH}/pdb-features/b_factor.csv")
     df_bfact = df_bfact[
@@ -796,17 +787,11 @@ def get_all_atom_distances_with_ratio():
         )
 
     df_all_results = pd.concat(results, ignore_index=True)
-    df_all_results.to_csv(
-        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_with_ratio.csv",
-        index=False,
-    )
+    return df_all_results
+    
 
-
-def get_non_canonical_atom_distances_reactivity_ratio_correlation():
-    get_all_atom_distances_with_ratio()
-    df = pd.read_csv(
-        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_with_ratio.csv"
-    )
+def get_non_canonical_atom_distances_reactivity_ratio_correlation(df, df_pdb):
+    get_all_atom_distances_with_ratio(df_pdb)
     data = []
     for (pair, atom1, atom2), g in df.groupby(["pair", "atom1", "atom2"]):
         data.append(
@@ -818,14 +803,70 @@ def get_non_canonical_atom_distances_reactivity_ratio_correlation():
                 "r2": g["r2"].iloc[0],
             }
         )
-    pd.DataFrame(data).to_csv(
+    df_fin = pd.DataFrame(data)
+    return df_fin
+    
+
+def generate_data():
+    df_res = pd.read_json(f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues.json")
+    df_wc = process_basepair_details(df_res)
+    df_wc.to_csv(f"{DATA_PATH}/csvs/wc_details.csv", index=False)
+    
+    df_pdb = pd.read_json(
+        f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json"
+    )
+    df_atom_dist = get_all_atom_distances(df_pdb)
+    df_atom_dist.to_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances.csv", index=False
+    )
+    
+    df_atom_dist_corr = get_non_canonical_atom_distances_reactivity_correlation(df_atom_dist, df_pdb)
+    df_atom_dist_corr.to_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_correlation.csv",
+        index=False,
+    )
+    
+    df_atom_dist_ratio = get_all_atom_distances_with_ratio(df_pdb)
+    df_atom_dist_ratio.to_csv(
+        f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_with_ratio.csv",
+        index=False,
+    )
+    df_atom_dist_ratio_corr = get_non_canonical_atom_distances_reactivity_ratio_correlation(df_atom_dist_ratio, df_pdb)
+    df_atom_dist_ratio_corr.to_csv(
         f"{DATA_PATH}/pdb-features/non_canonical_atom_distances_reactivity_ratio_correlation.csv",
         index=False,
     )
-
+    
+def generate_data_for_modified_cond():
+    df_res = pd.read_json(f"{REVISION_PATH}/residues/pdb_library_37C_2min_residues.json")
+    df_wc = process_basepair_details(df_res)
+    df_wc.to_csv(f"{REVISION_PATH}/37c_2min/csvs/wc_details_37C_2min.csv", index=False)
+    
+    df_pdb = pd.read_json(
+        f"{REVISION_PATH}/residues/pdb_library_37C_2min_residues_pdb.json"
+    )
+    df_atom_dist = get_all_atom_distances(df_pdb)
+    df_atom_dist.to_csv(
+        f"{REVISION_PATH}/37c_2min/pdb-features/non_canonical_atom_distances_37C_2min.csv", index=False
+    )
+    
+    df_atom_dist_corr = get_non_canonical_atom_distances_reactivity_correlation(df_atom_dist, df_pdb)
+    df_atom_dist_corr.to_csv(
+        f"{REVISION_PATH}/37c_2min/pdb-features/non_canonical_atom_distances_reactivity_correlation_37C_2min.csv",
+        index=False,
+    )
+    
+    df_atom_dist_ratio = get_all_atom_distances_with_ratio(df_pdb)
+    df_atom_dist_ratio.to_csv(
+        f"{REVISION_PATH}/37c_2min/pdb-features/non_canonical_atom_distances_with_ratio_37C_2min.csv",
+        index=False,
+    )
+    df_atom_dist_ratio_corr = get_non_canonical_atom_distances_reactivity_ratio_correlation(df_atom_dist_ratio, df_pdb)
+    df_atom_dist_ratio_corr.to_csv(
+        f"{REVISION_PATH}/37c_2min/pdb-features/non_canonical_atom_distances_reactivity_ratio_correlation_37C_2min.csv",
+        index=False,
+    )
 
 if __name__ == "__main__":
-
-    get_all_atom_distances_with_ratio()
-    get_non_canonical_atom_distances_reactivity_ratio_correlation()
+    generate_data_for_modified_cond()
     exit()

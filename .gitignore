@@ -11,3 +11,6 @@ __pycache__/
 *.ipynb_checkpoints/
 dot.ps
 rna.ps
+*.zip
+farfar-models
+.venv
