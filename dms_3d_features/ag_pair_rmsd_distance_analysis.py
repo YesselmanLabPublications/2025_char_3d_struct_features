@@ -174,6 +174,61 @@ def kabsch_rmsd(P, Q):
     R  = kabsch_rotation(Pc, Qc)
     return np.sqrt(np.mean(np.sum((Qc @ R - Pc) ** 2, axis=1)))
 
+def compute_whole_motif_rmsd(pdb_crystal, pdb_model):
+    """
+    Compute RMSD over all residues present in crystal {base}.pdb.
+    Ignores extra residues in model.
+    """
+
+    # --- get residue → atom coords ---
+    def get_all_coords(pdb_file):
+        coords = {}
+        with open(pdb_file) as f:
+            for line in f:
+                if not line.startswith("ATOM"):
+                    continue
+                res = line[22:26].strip()
+                atom = line[12:16].strip()
+
+                if EXCLUDE_HYDROGEN and atom.startswith("H"):
+                    continue
+
+                xyz = np.array([
+                    float(line[30:38]),
+                    float(line[38:46]),
+                    float(line[46:54])
+                ])
+
+                coords.setdefault(res, {})
+                if atom not in coords[res]:
+                    coords[res][atom] = xyz
+        return coords
+
+    coords_c = get_all_coords(pdb_crystal)
+    coords_m = get_all_coords(pdb_model)
+
+    P_all, Q_all = [], []
+
+    for res in coords_c:
+        if res not in coords_m:
+            continue
+
+        shared_atoms = sorted(coords_c[res].keys() & coords_m[res].keys())
+        if len(shared_atoms) < 3:
+            continue
+
+        for atom in shared_atoms:
+            P_all.append(coords_c[res][atom])
+            Q_all.append(coords_m[res][atom])
+
+    if len(P_all) < 3:
+        return None
+
+    P = np.array(P_all)
+    Q = np.array(Q_all)
+
+    return round(float(kabsch_rmsd(P, Q)), 3)
+
 # =========================================================
 # SCORE FILE
 # =========================================================
@@ -327,12 +382,30 @@ def process_condition(condition_dir, crystal_dir, motif, distance_df):
         "rmsd":        [round(float(x), 3) for x in df_all["rms"]]
     }
 
-    top_rms = [round(float(x), 3) for x in df_top["rms"]]
+    whole_rmsd_list = []
+    model_names = []
+    scores = []
+
+    for _, row in df_top.iterrows():
+        name = str(row["description"])
+        pdb_model = find_model_pdb(pdb_top, name)
+
+        if pdb_model is None:
+            continue
+
+        rms = compute_whole_motif_rmsd(pdb_crystal, pdb_model)
+        if rms is None:
+            continue
+
+        whole_rmsd_list.append(rms)
+        model_names.append(name)
+        scores.append(round(float(row["score"]), 3))
+        
     top_models = {
-        "model_names": df_top["description"].astype(str).tolist(),
-        "score":       [round(float(x), 3) for x in df_top["score"]],
-        "rmsd":        top_rms,
-        "mean_rmsd":   round(float(np.mean(top_rms)), 3) if top_rms else None
+        "model_names": model_names,
+        "score": scores,
+        "rmsd": whole_rmsd_list,
+        "mean_rmsd": round(float(np.mean(whole_rmsd_list)), 3) if whole_rmsd_list else None
     }
 
     crystal_distances   = {}
