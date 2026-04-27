@@ -47,6 +47,8 @@ def find_crystal_outfile_and_pdb(motif_dir, motif):
     for o in outs:
         base = os.path.splitext(o)[0].lower()
         pdb = os.path.join(motif_dir, f"{base}.pdb")
+        if "gc_added" in base:
+            continue
         if os.path.exists(pdb):
             return os.path.join(motif_dir, o), pdb
     return None, None
@@ -174,31 +176,18 @@ def kabsch_rmsd(P, Q):
     R  = kabsch_rotation(Pc, Qc)
     return np.sqrt(np.mean(np.sum((Qc @ R - Pc) ** 2, axis=1)))
 
-def compute_whole_motif_rmsd(pdb_crystal, pdb_model):
-    """
-    Compute RMSD over all residues present in crystal {base}.pdb.
-    Ignores extra residues in model.
-    """
-
-    # --- get residue → atom coords ---
+def compute_whole_motif_rmsd(pdb_crystal, pdb_model, debug=False):
     def get_all_coords(pdb_file):
         coords = {}
         with open(pdb_file) as f:
             for line in f:
                 if not line.startswith("ATOM"):
                     continue
-                res = line[22:26].strip()
+                res  = line[22:26].strip()
                 atom = line[12:16].strip()
-
                 if EXCLUDE_HYDROGEN and atom.startswith("H"):
                     continue
-
-                xyz = np.array([
-                    float(line[30:38]),
-                    float(line[38:46]),
-                    float(line[46:54])
-                ])
-
+                xyz = np.array([float(line[30:38]), float(line[38:46]), float(line[46:54])])
                 coords.setdefault(res, {})
                 if atom not in coords[res]:
                     coords[res][atom] = xyz
@@ -207,16 +196,19 @@ def compute_whole_motif_rmsd(pdb_crystal, pdb_model):
     coords_c = get_all_coords(pdb_crystal)
     coords_m = get_all_coords(pdb_model)
 
-    P_all, Q_all = [], []
+    if debug:
+        print(f"  Crystal residues: {sorted(coords_c.keys())}")
+        print(f"  Model residues:   {sorted(coords_m.keys())}")
 
+    P_all, Q_all = [], []
     for res in coords_c:
         if res not in coords_m:
+            if debug:
+                print(f"  WARNING: residue {res} missing from model")
             continue
-
         shared_atoms = sorted(coords_c[res].keys() & coords_m[res].keys())
         if len(shared_atoms) < 3:
             continue
-
         for atom in shared_atoms:
             P_all.append(coords_c[res][atom])
             Q_all.append(coords_m[res][atom])
@@ -226,6 +218,15 @@ def compute_whole_motif_rmsd(pdb_crystal, pdb_model):
 
     P = np.array(P_all)
     Q = np.array(Q_all)
+
+    if debug:
+        # Per-atom distances after superposition to spot bad pairs
+        Pc = P - P.mean(0)
+        Qc = Q - Q.mean(0)
+        R  = kabsch_rotation(Pc, Qc)
+        per_atom = np.sqrt(np.sum((Qc @ R - Pc) ** 2, axis=1))
+        print(f"  Per-atom distances (sorted): {np.sort(per_atom).round(2)}")
+        print(f"  Raw RMSD ({len(P)} atoms): {np.sqrt(np.mean(per_atom**2)):.3f}")
 
     return round(float(kabsch_rmsd(P, Q)), 3)
 
