@@ -1104,10 +1104,10 @@ def main():
     main function for script
     """
     setup_logging()
-    #process_mutation_histograms_to_json()
-    #generate_normalized_construct_dataframes()
-    #generate_threshold_motif_dataframes()
-    #generate_motif_dataframes()
+    process_mutation_histograms_to_json()
+    generate_normalized_construct_dataframes()
+    generate_threshold_motif_dataframes()
+    generate_motif_dataframes()
     generate_37c_2min_motif_dataframes()
 
 

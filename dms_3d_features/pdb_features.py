@@ -838,12 +838,12 @@ def generate_data():
     )
     
 def generate_data_for_modified_cond():
-    df_res = pd.read_json(f"{REVISION_PATH}/residues/pdb_library_37C_2min_residues.json")
+    df_res = pd.read_json(f"{REVISION_PATH}/37c_2min/residues/pdb_library_37C_2min_residues.json")
     df_wc = process_basepair_details(df_res)
     df_wc.to_csv(f"{REVISION_PATH}/37c_2min/csvs/wc_details_37C_2min.csv", index=False)
     
     df_pdb = pd.read_json(
-        f"{REVISION_PATH}/residues/pdb_library_37C_2min_residues_pdb.json"
+        f"{REVISION_PATH}/37c_2min/residues/pdb_library_37C_2min_residues_pdb.json"
     )
     df_atom_dist = get_all_atom_distances(df_pdb)
     df_atom_dist.to_csv(
@@ -868,5 +868,6 @@ def generate_data_for_modified_cond():
     )
 
 if __name__ == "__main__":
+    generate_data()
     generate_data_for_modified_cond()
     exit()

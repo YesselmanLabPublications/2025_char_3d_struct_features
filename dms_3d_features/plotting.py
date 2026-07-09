@@ -600,7 +600,7 @@ def heatmap_scatter_plot_w_regression(
         l.set_fontname("Arial")
         l.set_fontsize(6)
     cb.ax.tick_params(width=0.75, size=2.0, pad=1)
-    plot_regression_line(df, ax, x_col, y_col, r2_position=r2_position)
+    plot_regression_line(df, ax, x_col, y_col, pos=r2_position)
 
 
 # style functions #############################################################

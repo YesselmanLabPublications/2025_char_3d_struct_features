@@ -28,13 +28,21 @@ conda activate dms-3d-features
 pip install . 
 
 # Download the data from Figshare (robust)
-URL="https://figshare.com/ndownloader/files/58663213"
-curl -fL --retry 8 --retry-delay 5 --retry-all-errors \
+curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
      -H "User-Agent: Mozilla/5.0" \
      -H "Referer: https://figshare.com/" \
-     -o data.zip "$URL"
-unzip -q data.zip -d data
-rm -f data.zip
+     -o data.zip \
+     "https://ndownloader.figshare.com/files/66446738"
+
+curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
+     -H "User-Agent: Mozilla/5.0" \
+     -H "Referer: https://figshare.com/" \
+     -o farfar-models.zip \
+     "https://ndownloader.figshare.com/files/64021168"
+
+unzip data.zip
+unzip farfar-models.zip
+rm -f data.zip farfar-models.zip
 
 # Run the tests
 # all should pass
