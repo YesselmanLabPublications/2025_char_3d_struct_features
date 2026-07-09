@@ -67,6 +67,33 @@ jobs:
         run: |
           micromamba run -n dms-3d-features pip install -e .
 
+      # Verify all packages import correctly
+      - name: Verify package imports
+        shell: bash -l {0}
+        run: |
+          micromamba run -n dms-3d-features python -c "
+          import numpy
+          import pandas
+          import matplotlib
+          import seaborn
+          import sklearn
+          import scipy
+          import click
+          import regex
+          import editdistance
+          import freesasa
+          import biopandas
+          import tabulate
+          import tqdm
+          import vienna
+          import rna_map
+          import rna_secstruct
+          import rna_secstruct_design
+          import seq_tools
+          import dms_3d_features
+          print('All packages imported successfully')
+          "
+
       # Run tests
       - name: Run pytest suite
         shell: bash -l {0}
