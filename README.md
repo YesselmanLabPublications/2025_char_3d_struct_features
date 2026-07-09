@@ -7,7 +7,7 @@ Contact: jyesselm@unl.edu
 
 
 ## Data Download
-Make sure to download the data used in this project from DOI 10.6084/m9.figshare.27880434. A direct download link is: `https://figshare.com/ndownloader/files/58663213`. Unzip this data and store it in the `data/` directory within the current project directory. If you encounter a 403 Forbidden error, use the curl command below which sets a user-agent and referer.
+Make sure to download the data used in this project from DOI 10.6084/m9.figshare.27880434. This dataset contains three files: `data.zip`, `farfar-models.zip`, and `pngs.zip`. Unzip each into its corresponding directory (`data/`, `farfar-models/`, `pngs/`) within the current project directory. If you encounter a 403 Forbidden error, use the curl commands below which set a user-agent and referer.
 
 
 ## Installation
@@ -40,9 +40,16 @@ curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
      -o farfar-models.zip \
      "https://ndownloader.figshare.com/files/64021168"
 
+curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
+     -H "User-Agent: Mozilla/5.0" \
+     -H "Referer: https://figshare.com/" \
+     -o pngs.zip \
+     "https://ndownloader.figshare.com/files/66481535"
+
 unzip data.zip
 unzip farfar-models.zip
-rm -f data.zip farfar-models.zip
+unzip pngs.zip
+rm -f data.zip farfar-models.zip pngs.zip
 
 # Run the tests
 # all should pass
