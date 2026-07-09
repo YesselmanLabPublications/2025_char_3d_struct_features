@@ -12,6 +12,7 @@ __pycache__/
 dot.ps
 rna.ps
 *.zip
-farfar-models
+farfar-models/
 .venv
 pngs/
+__MACOSX/
