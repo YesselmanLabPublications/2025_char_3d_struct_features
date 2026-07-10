@@ -24,7 +24,7 @@ def main():
     df1 = pd.read_json("data/raw-jsons/constructs/pdb_library_1_combined.json.bak")
     df1.sort_values(
         by="name",
-        key=lambda x: x.str.extract("(\d+)", expand=False).astype(int),
+        key=lambda x: x.str.extract(r"(\d+)", expand=False).astype(int),
         inplace=True,
     )
     df1.reset_index(drop=True, inplace=True)
