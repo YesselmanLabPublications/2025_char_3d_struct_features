@@ -32,7 +32,7 @@ curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
      -H "User-Agent: Mozilla/5.0" \
      -H "Referer: https://figshare.com/" \
      -o data.zip \
-     "https://ndownloader.figshare.com/files/66446738"
+     "https://ndownloader.figshare.com/files/66482813"
 
 curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
      -H "User-Agent: Mozilla/5.0" \
@@ -44,7 +44,7 @@ curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
      -H "User-Agent: Mozilla/5.0" \
      -H "Referer: https://figshare.com/" \
      -o pngs.zip \
-     "https://ndownloader.figshare.com/files/66481535"
+     "https://ndownloader.figshare.com/files/66482831"
 
 unzip data.zip
 unzip farfar-models.zip
