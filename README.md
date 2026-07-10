@@ -7,13 +7,13 @@ Contact: jyesselm@unl.edu
 
 
 ## Data Download
-Make sure to download the data used in this project from DOI 10.6084/m9.figshare.27880434. A direct download link is: `https://figshare.com/ndownloader/files/58663213`. Unzip this data and store it in the `data/` directory within the current project directory. If you encounter a 403 Forbidden error, use the curl command below which sets a user-agent and referer.
+Make sure to download the data used in this project from DOI 10.6084/m9.figshare.27880434. This dataset contains three files: `data.zip`, `farfar-models.zip`, and `pngs.zip`. Unzip each into its corresponding directory (`data/`, `farfar-models/`, `pngs/`) within the current project directory. If you encounter a 403 Forbidden error, use the curl commands below which set a user-agent and referer.
 
 
 ## Installation
 ```bash
 git clone https://github.com/YesselmanLabPublications/2025_char_3d_struct_features
-cd 2024_dms_3d_features
+cd 2025_char_3d_struct_features
 
 # Create a new conda environment  also works with mamba / micromamba
 conda env create -f environment.yml
@@ -28,13 +28,28 @@ conda activate dms-3d-features
 pip install . 
 
 # Download the data from Figshare (robust)
-URL="https://figshare.com/ndownloader/files/58663213"
-curl -fL --retry 8 --retry-delay 5 --retry-all-errors \
+curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
      -H "User-Agent: Mozilla/5.0" \
      -H "Referer: https://figshare.com/" \
-     -o data.zip "$URL"
-unzip -q data.zip -d data
-rm -f data.zip
+     -o data.zip \
+     "https://ndownloader.figshare.com/files/66482813"
+
+curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
+     -H "User-Agent: Mozilla/5.0" \
+     -H "Referer: https://figshare.com/" \
+     -o farfar-models.zip \
+     "https://ndownloader.figshare.com/files/64021168"
+
+curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
+     -H "User-Agent: Mozilla/5.0" \
+     -H "Referer: https://figshare.com/" \
+     -o pngs.zip \
+     "https://ndownloader.figshare.com/files/66482831"
+
+unzip data.zip
+unzip farfar-models.zip
+unzip pngs.zip
+rm -f data.zip farfar-models.zip pngs.zip
 
 # Run the tests
 # all should pass
