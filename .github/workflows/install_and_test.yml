@@ -29,50 +29,70 @@ jobs:
           cache-downloads: true
           cache-environment: true
 
-      # Cache the datasets (same cache key across OSes)
+      # Cache the dataset
       - name: Restore cached dataset
         uses: actions/cache@v4
         with:
           path: data
-          key: figshare-data-v2
+          key: figshare-data-v4
 
-      # Download and unzip if not cached
-      - name: Download and unzip datasets
+      # Download and unzip if not cached.
+      # Only data.zip (~644 MB) is needed to run process_motifs.py.
+      # farfar-models.zip (~1.35 GB) is NOT downloaded: every access to
+      # data/pdbs_w_2bp/ in process_motifs.py is guarded (os.path.exists / try-except),
+      # so the script runs to completion without it. pngs.zip is figures only.
+      #
+      # The archive contains a nested top-level folder, so we extract to a temp
+      # dir, locate wherever raw-jsons actually lives, and normalize it to ./data.
+      - name: Download and unzip dataset
         shell: bash -l {0}
         run: |
-          if [ -d "data" ]; then
-            echo "✅ Using cached dataset."
+          if [ -d "data/raw-jsons/constructs" ]; then
+            echo "Using cached dataset."
             exit 0
           fi
 
-          mkdir -p data
+          rm -rf data _extract
+          mkdir -p _extract
 
-          # Each entry: "<output-zip> <figshare-file-url>"
-          downloads=(
-            "data.zip          https://ndownloader.figshare.com/files/66482813"
-            "farfar-models.zip https://ndownloader.figshare.com/files/64021168"
-            "pngs.zip          https://ndownloader.figshare.com/files/66482831"
-          )
+          URL="https://ndownloader.figshare.com/files/66482813"   # data.zip
+          echo "Downloading data.zip from $URL ..."
+          # -C - resumes a partial download; retries + headers avoid 403
+          curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
+               -H "User-Agent: Mozilla/5.0" \
+               -H "Referer: https://figshare.com/" \
+               -o data.zip "$URL"
 
-          for entry in "${downloads[@]}"; do
-            out=$(echo "$entry" | awk '{print $1}')
-            url=$(echo "$entry" | awk '{print $2}')
-            echo "Downloading $out from $url ..."
-            # -C - resumes a partial download; retries + headers avoid 403
-            curl -fL -C - --retry 8 --retry-delay 5 --retry-all-errors \
-                 -H "User-Agent: Mozilla/5.0" \
-                 -H "Referer: https://figshare.com/" \
-                 -o "$out" "$url"
-            # Verify the download is a valid zip
-            if ! unzip -tq "$out" > /dev/null 2>&1; then
-              echo "❌ $out is not a valid zip. Exiting." >&2
-              rm -f "$out"
-              exit 1
-            fi
-            echo "Unzipping $out into data/ ..."
-            unzip -q "$out" -d data
-            rm -f "$out"
-          done
+          # Verify the download is a valid zip
+          if ! unzip -tq data.zip > /dev/null 2>&1; then
+            echo "data.zip is not a valid zip. Exiting." >&2
+            rm -f data.zip
+            exit 1
+          fi
+
+          echo "Unzipping data.zip ..."
+          unzip -q data.zip -d _extract
+          rm -f data.zip
+
+          echo "=== extracted structure (top levels) ==="
+          find _extract -maxdepth 3 -type d | head -40
+
+          # Locate the directory that actually contains raw-jsons
+          rj=$(find _extract -type d -name raw-jsons | head -1)
+          if [ -z "$rj" ]; then
+            echo "Could not find a 'raw-jsons' directory inside data.zip." >&2
+            echo "Full top-level listing:" >&2
+            find _extract -maxdepth 2 >&2
+            exit 1
+          fi
+
+          root=$(dirname "$rj")
+          echo "Found data root at: $root  (moving to ./data)"
+          mv "$root" data
+          rm -rf _extract
+
+          echo "=== normalized ./data ==="
+          find data -maxdepth 2 -type d | head -40
 
       # Install package into the fresh environment (needed to import dms_3d_features)
       - name: Install package
@@ -90,14 +110,14 @@ jobs:
             data/raw-jsons/constructs/pdb_library_denature.json \
             data/raw-jsons/constructs/pdb_library_nomod.json; do
             if [ ! -f "$f" ]; then
-              echo "❌ Missing required input file: $f" >&2
+              echo "Missing required input file: $f" >&2
               missing=1
             else
-              echo "✅ Found $f"
+              echo "Found $f"
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            echo "Required inputs for process_motifs.py are not in the dataset." >&2
+            echo "Required inputs for process_motifs.py are not in data.zip." >&2
             echo "Contents of data/raw-jsons/constructs (if any):" >&2
             ls -lh data/raw-jsons/constructs 2>/dev/null || echo "(directory does not exist)"
             exit 1
@@ -116,6 +136,8 @@ jobs:
             data/revisions/normalized/residues \
             data/revisions/dif_threshold/motifs \
             data/revisions/dif_threshold/residues \
+            data/revisions/37c_2min/motifs \
+            data/revisions/37c_2min/residues \
             data/pdb-features
 
       # Run the target script end-to-end in the fresh environment.
@@ -130,8 +152,8 @@ jobs:
         shell: bash -l {0}
         run: |
           test -f data/raw-jsons/motifs/pdb_library_1_motifs_avg.json \
-            && echo "✅ motif output written" \
-            || (echo "❌ expected motif output missing" >&2; exit 1)
+            && echo "motif output written" \
+            || (echo "expected motif output missing" >&2; exit 1)
           echo "Generated files:"
           ls -lh data/raw-jsons/motifs data/raw-jsons/residues
 
