@@ -323,6 +323,42 @@ class GenerateMotifDataFrame:
             orient="records",
         )
         return df_motif_avg
+    
+    def run_37c_2min_df(self, df: pd.DataFrame, name: str) -> pd.DataFrame:
+        """
+        Process the input normalized dataframe to generate motif data.
+
+        Args:
+            df (pd.DataFrame): Input dataframe with sequence and structure data.
+
+        Returns:
+            pd.DataFrame: Processed dataframe with average motif data.
+        """
+        self.name = name
+        log.info(f"Processing {name} with {len(df)} rows")
+        df_filtered = df.query(f"num_aligned > 2000 and sn > 4.0")
+        log.info(
+            f"removed {len(df) - len(df_filtered)} rows with num_aligned <= 2000 or sn <= 4.0"
+        )
+        df_motif = self._create_motif_dataframe(df_filtered)
+        df_motif.to_json(
+            f"{REVISION_PATH}/37c_2min/motifs/{self.name}_motifs.json",
+            orient="records",
+        )
+        df_motif_helix = self.__create_helix_motif_dataframe(df_filtered)
+        dfs = [df_motif, df_motif_helix]
+        df_motif_concat = pd.concat(dfs).reset_index(drop=True)
+        df_motif_concat_standardized = self._standardize_motifs(df_motif_concat)
+        df_motif_concat_standardized.to_json(
+            f"{REVISION_PATH}/37c_2min/motifs/{self.name}_motifs_standard.json",
+            orient="records",
+        )
+        df_motif_avg = self._calculate_average_motif_data(df_motif_concat_standardized)
+        df_motif_avg.to_json(
+            f"{REVISION_PATH}/37c_2min/motifs/{self.name}_motifs_avg.json",
+            orient="records",
+        )
+        return df_motif_avg
 
     def run_normalized_df(self, df: pd.DataFrame, name: str) -> pd.DataFrame:
         """
@@ -658,6 +694,24 @@ class GenerateResidueDataFrame:
         df_residues = self.__add_log_data(df_residues, inf_sub)
         df_residues = self.__mark_outliers(df_residues)
         self.__save_residues_to_json(df_residues)
+        
+    def run_37c_2min_df(self, df_motif, name, inf_sub: int):
+        """
+        Execute the full residue analysis pipeline on a normalized motif dataframes.
+        """
+        self.name = name
+        df_residues_avg = self.__generate_avg_residue_dataframe(df_motif)
+        df_residues_avg.to_json(
+            f"{REVISION_PATH}/37c_2min/residues/{self.name}_residues_avg.json",
+            orient="records",
+        )
+        df_residues = self.__expand_residue_dataframe(df_residues_avg)
+        df_residues = self.__add_log_data(df_residues, inf_sub)
+        df_residues = self.__mark_outliers(df_residues)
+        df_residues.to_json(
+            f"{REVISION_PATH}/37c_2min/residues/{self.name}_residues.json",
+            orient="records",
+        )
 
     def run_normalized_df(self, df_motif, name, inf_sub: int):
         """
@@ -1024,6 +1078,25 @@ def generate_motif_dataframes():
         f"{DATA_PATH}/raw-jsons/residues/pdb_library_1_residues_pdb.json",
         orient="records",
     )
+    
+def generate_37c_2min_motif_dataframes():
+    inf_sub = -11.6
+    ## GENERATING DATAFRAMES FOR PDB_LIBRARY_37C_2min ##
+    df = pd.read_json(f"{DATA_PATH}/raw-jsons/constructs/pdb_library_37C_2min.json")
+    gen = GenerateMotifDataFrame()
+    log.info("Generating motif dataframe")
+    gen.run_37c_2min_df(df, "pdb_library_37C_2min")
+    df1 = pd.read_json(f"{REVISION_PATH}/37c_2min/motifs/pdb_library_37C_2min_motifs_avg.json")
+    log.info("Generating residue dataframe")
+    gen = GenerateResidueDataFrame()
+    gen.run_37c_2min_df(df1, "pdb_library_37C_2min", inf_sub)
+    df1 = pd.read_json(f"{REVISION_PATH}/37c_2min/residues/pdb_library_37C_2min_residues.json")
+    log.info("Generating pdb residue dataframe")
+    df1 = generate_pdb_residue_dataframe(df1)
+    df1.to_json(
+        f"{REVISION_PATH}/37c_2min/residues/pdb_library_37C_2min_residues_pdb.json",
+        orient="records",
+    )
 
 
 def main():
@@ -1031,9 +1104,11 @@ def main():
     main function for script
     """
     setup_logging()
+    process_mutation_histograms_to_json()
     generate_normalized_construct_dataframes()
     generate_threshold_motif_dataframes()
     generate_motif_dataframes()
+    generate_37c_2min_motif_dataframes()
 
 
 if __name__ == "__main__":
