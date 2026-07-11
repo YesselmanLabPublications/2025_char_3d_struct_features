@@ -1,5 +1,7 @@
 # Code for paper: "Characterizing RNA 3D structural features from DMS reactivity"
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.16884332.svg)](https://doi.org/10.5281/zenodo.16884332)
+
 bioRxiv link: https://www.biorxiv.org/content/10.1101/2024.11.21.624766v2
 
 By D. H. Sanduni Deenalattha, Chris P. Jurich, Bret Lange, Darren Armstrong, Kaitlyn Nein, Sakshi Jain, Brandon G. Kircher, and Joseph D. Yesselman
