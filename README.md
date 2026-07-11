@@ -2,7 +2,7 @@
 
 bioRxiv link: https://www.biorxiv.org/content/10.1101/2024.11.21.624766v2
 
-By D. H. Sanduni Deenalattha, Chris P. Jurich, Bret Lange, Darren Armstrong, Kaitlyn Nein, Sakshi Jain, and Joseph D. Yesselman
+By D. H. Sanduni Deenalattha, Chris P. Jurich, Bret Lange, Darren Armstrong, Kaitlyn Nein, Sakshi Jain, Brandon G. Kircher, and Joseph D. Yesselman
 Contact: jyesselm@unl.edu
 
 
